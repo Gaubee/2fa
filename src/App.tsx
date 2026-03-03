@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Camera, Copy, Edit3, QrCode, Share2, Shield, Trash2, Upload } from "lucide-react";
+import { Camera, Copy, Edit3, Github, QrCode, Share2, Shield, Trash2, Upload } from "lucide-react";
 
 const STORAGE_KEY = "totp.entries.v2";
 const SCAN_INTERVAL_MS = 250;
@@ -622,6 +622,15 @@ function App() {
             <div>
               <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">两步验证验证码生成器</h1>
               <p className="mt-1 text-sm text-slate-600">本地离线生成 TOTP 验证码，支持扫码导入、链接导入与多选分享。</p>
+              <a
+                href="https://github.com/Gaubee/2fa"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-sky-700 underline-offset-4 hover:underline"
+              >
+                <Github className="size-3.5" />
+                GitHub 仓库（源码与私有化部署）
+              </a>
             </div>
             <div className="min-w-44">
               <p className="text-xs text-slate-500">刷新倒计时</p>
