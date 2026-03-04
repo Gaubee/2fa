@@ -170,6 +170,7 @@ function App() {
   const counter = useMemo(() => currentCounter(now), [now]);
   const remain = useMemo(() => remainSeconds(now), [now]);
   const progress = useMemo(() => progressPercent(now), [now]);
+  const logoUrl = useMemo(() => `${import.meta.env.BASE_URL}logo-2fa.svg`, []);
 
   const shareDialogRef = useRef<HTMLDialogElement | null>(null);
 
@@ -620,7 +621,10 @@ function App() {
         <Card className="bg-white/85 backdrop-blur-sm">
           <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-end md:justify-between">
             <div>
-              <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">两步验证验证码生成器</h1>
+              <div className="flex items-center gap-3">
+                <img src={logoUrl} alt="2FA logo" className="size-10 rounded-xl md:size-12" />
+                <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">两步验证验证码生成器</h1>
+              </div>
               <p className="mt-1 text-sm text-slate-600">本地离线生成 TOTP 验证码，支持扫码导入、链接导入与多选分享。</p>
               <a
                 href="https://github.com/Gaubee/2fa"

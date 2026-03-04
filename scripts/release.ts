@@ -151,21 +151,24 @@ function main(): void {
   }
 
   const archiveName = `${pkg.name}-${tag}-dist.tar.gz`;
+  const latestArchiveName = `${pkg.name}-latest-dist.tar.gz`;
   const archivePath = resolve(releaseDir, archiveName);
+  const latestArchivePath = resolve(releaseDir, latestArchiveName);
   const notesPath = resolve(releaseDir, `release-notes-${tag}.md`);
 
   run("tar", ["-czf", archivePath, "-C", distPath, "."], { stdio: "inherit" });
+  run("cp", [archivePath, latestArchivePath], { stdio: "inherit" });
   writeFileSync(notesPath, createReleaseNotes(tag, repo, options.notes), "utf8");
 
   ensureTag(tag);
 
   const hasRelease = tryRun("gh", ["release", "view", tag, "-R", repo]);
   if (hasRelease.ok) {
-    run("gh", ["release", "upload", tag, archivePath, "--clobber", "-R", repo], { stdio: "inherit" });
+    run("gh", ["release", "upload", tag, archivePath, latestArchivePath, "--clobber", "-R", repo], { stdio: "inherit" });
     run("gh", ["release", "edit", tag, "--notes-file", notesPath, "-R", repo], { stdio: "inherit" });
     console.log(`已更新 Release: ${tag}`);
   } else {
-    run("gh", ["release", "create", tag, archivePath, "--title", tag, "--notes-file", notesPath, "-R", repo], {
+    run("gh", ["release", "create", tag, archivePath, latestArchivePath, "--title", tag, "--notes-file", notesPath, "-R", repo], {
       stdio: "inherit",
     });
     console.log(`已创建 Release: ${tag}`);

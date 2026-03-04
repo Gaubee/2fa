@@ -50,6 +50,20 @@ pnpm build
 
 3. 将 `dist/` 内容部署到你自己的静态服务器（Nginx、GitHub Pages、Cloudflare Pages、Vercel 等）。
 
+### 一键下载到指定目录（github raw 脚本）
+
+可直接执行仓库里的 `sh` 脚本，把最新 Release 的 `dist` 内容部署到 `--www=./mydir`：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Gaubee/2fa/main/scripts/install-www.sh | sh -s -- --www=./mydir
+```
+
+可选参数：
+
+- `--repo=owner/name` 指定仓库（默认 `Gaubee/2fa`）
+- `--state=/path/state` 指定版本状态文件路径
+- `--force` 强制覆盖部署
+
 ## GitHub Release 发布脚本
 
 项目内置 `release:github` 脚本，会执行以下步骤：
@@ -76,3 +90,26 @@ pnpm release:github -- --tag v0.1.0 --skip-build
 
 - `--repo owner/name` 指定仓库（默认读取 `origin`）
 - `--notes \"发布说明\"` 覆盖默认 release notes
+
+## 自动更新（轮询 + 开机启动）
+
+可通过 github raw 脚本一键部署并注册自动更新服务：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Gaubee/2fa/main/scripts/setup-auto-update.sh | sh -s -- --www=./mydir --interval=600
+```
+
+此命令会：
+
+1. 下载并执行部署脚本（先部署一次最新版本）
+2. 写入配置文件：`~/.config/gaubee-2fa/updater.conf`
+3. 自动注册启动服务：
+   - Linux: `systemd --user`
+   - macOS: `launchd`
+   - 其他环境：退化为后台进程
+
+默认每 `600` 秒检查一次更新。可在配置文件中修改：
+
+- `WWW_DIR` 部署目录
+- `REPO` 目标仓库
+- `POLL_SECONDS` 轮询间隔秒数

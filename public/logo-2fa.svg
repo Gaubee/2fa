@@ -1,0 +1,56 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="200" height="200">
+  <style>
+    .fill {
+      fill: #16b7a7;
+    }
+  </style>
+  <defs>
+    <filter id="fgFilter">
+      <feColorMatrix type="saturate" values=".68" />
+      <feComponentTransfer>
+        <feFuncR type="linear" slope="1.35" />
+        <feFuncG type="linear" slope="1.35" />
+        <feFuncB type="linear" slope="1.35" />
+      </feComponentTransfer>
+    </filter>
+    <filter id="blurFilter" x="0" y="0">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="18" />
+    </filter>
+
+    <path
+      id="bg-1"
+      d="M40 228m101.5-27.5l514-139.5q101.5-27.5 129 74l156 576q27.5 101.5-74 129l-514 139.5q-101.5 27.5-129-74l-156-576q-27.5-101.5 74-129Z"
+    />
+    <circle id="bg-2" cx="910" cy="186" r="64" />
+    <rect id="fg" x="170" y="170" width="684" height="684" rx="156" ry="156" />
+
+    <path
+      id="shield"
+      d="M512 280c83 64 166 64 249 0v198c0 142-95 262-249 318-154-56-249-176-249-318V280c83 64 166 64 249 0Z"
+    />
+    <path
+      id="clock"
+      d="M512 432a92 92 0 1 0 0 184 92 92 0 0 0 0-184Zm0 36a56 56 0 1 1 0 112 56 56 0 0 1 0-112Z"
+    />
+    <path id="hand" d="M500 474h24v62l40 28-14 19-50-36z" />
+  </defs>
+
+  <clipPath id="clipPath">
+    <use href="#fg" />
+  </clipPath>
+  <mask id="maskPath">
+    <use href="#bg-1" fill="#fff" />
+    <use href="#bg-2" fill="#fff" />
+    <use href="#fg" />
+  </mask>
+
+  <use href="#bg-1" class="fill" mask="url(#maskPath)" />
+  <use href="#bg-2" class="fill" mask="url(#maskPath)" />
+  <use href="#bg-1" class="fill" clip-path="url(#clipPath)" filter="url(#blurFilter)" />
+  <use href="#bg-2" class="fill" clip-path="url(#clipPath)" filter="url(#blurFilter)" />
+
+  <use href="#fg" class="fill" filter="url(#fgFilter)" fill-opacity=".38" />
+  <use href="#shield" fill="#fff" fill-opacity=".88" />
+  <use href="#clock" fill="#16b7a7" fill-opacity=".96" />
+  <use href="#hand" fill="#fff" fill-opacity=".95" />
+</svg>
