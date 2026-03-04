@@ -54,7 +54,11 @@ function run(command: string, args: string[], options?: { stdio?: "inherit" | "p
     encoding: "utf8",
   });
 
-  return result.trim();
+  if (typeof result === "string") {
+    return result.trim();
+  }
+
+  return "";
 }
 
 function tryRun(command: string, args: string[]): { ok: boolean; output: string } {
