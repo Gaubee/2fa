@@ -15,8 +15,83 @@
 body {
   margin: 0;
   min-width: 320px;
+  background: radial-gradient(circle at 4% 8%, #d0f9e8 0, #f8fcff 38%, #fef8ee 100%);
 }
 
 button {
   font-family: inherit;
+}
+
+.ambient-blob {
+  position: fixed;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(34px);
+  opacity: 0.48;
+  animation: blob-float 15s ease-in-out infinite;
+}
+
+.ambient-blob.left {
+  width: 260px;
+  height: 260px;
+  left: -60px;
+  top: 18vh;
+  background: radial-gradient(circle at 30% 30%, #7dd3c7, transparent 70%);
+}
+
+.ambient-blob.right {
+  width: 320px;
+  height: 320px;
+  right: -90px;
+  top: 48vh;
+  animation-delay: -4s;
+  background: radial-gradient(circle at 60% 40%, #93c5fd, transparent 72%);
+}
+
+.ambient-grid {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: linear-gradient(to right, rgba(15, 118, 110, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 118, 110, 0.055) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(circle at 50% 50%, black 32%, transparent 86%);
+}
+
+.liquid-card {
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 18px 34px -26px rgba(15, 23, 42, 0.45);
+}
+
+.mono-num {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.reveal-up {
+  animation: reveal-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes blob-float {
+  0%,
+  100% {
+    transform: translateY(0) translateX(0);
+  }
+
+  50% {
+    transform: translateY(-18px) translateX(8px);
+  }
 }

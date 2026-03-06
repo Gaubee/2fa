@@ -616,37 +616,45 @@ function App() {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-[radial-gradient(circle_at_0_0,#c7f9e9_0,#f6fbff_40%,#fef5e5_100%)] px-4 py-6 text-slate-900">
-      <div className="mx-auto grid w-full max-w-6xl gap-4">
-        <Card className="bg-white/85 backdrop-blur-sm">
-          <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-end md:justify-between">
-            <div>
+    <div className="min-h-[100dvh] px-4 py-6 text-slate-900">
+      <div className="ambient-grid" />
+      <div className="ambient-blob left" />
+      <div className="ambient-blob right" />
+      <div className="relative z-10 mx-auto grid w-full max-w-6xl gap-4">
+        <Card className="liquid-card reveal-up">
+          <CardContent className="grid gap-4 p-5 md:grid-cols-[1.35fr_0.65fr] md:items-end">
+            <div className="grid gap-2">
               <div className="flex items-center gap-3">
-                <img src={logoUrl} alt="2FA logo" className="size-10 rounded-xl md:size-12" />
+                <img src={logoUrl} alt="2FA logo" className="size-10 rounded-xl ring-1 ring-white/60 md:size-12" />
                 <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">两步验证验证码生成器</h1>
               </div>
               <p className="mt-1 text-sm text-slate-600">本地离线生成 TOTP 验证码，支持扫码导入、链接导入与多选分享。</p>
-              <a
-                href="https://github.com/Gaubee/2fa"
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-sky-700 underline-offset-4 hover:underline"
-              >
-                <Github className="size-3.5" />
-                GitHub 仓库（源码与私有化部署）
-              </a>
+              <div className="mt-1 flex flex-wrap gap-2">
+                <a
+                  href="https://github.com/Gaubee/2fa"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white/80 px-3 py-1 text-xs font-medium text-sky-800 shadow-sm transition-colors hover:border-sky-300 hover:text-sky-900"
+                >
+                  <Github className="size-3.5" />
+                  GitHub 仓库（源码与私有化部署）
+                </a>
+                <code className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-700">
+                  curl -fsSL .../install-www.sh | sh -s -- --www=./mydir
+                </code>
+              </div>
             </div>
-            <div className="min-w-44">
+            <div className="rounded-xl border border-teal-100 bg-white/70 p-3">
               <p className="text-xs text-slate-500">刷新倒计时</p>
-              <p className="text-3xl font-semibold tabular-nums">{remain}s</p>
-              <div className="mt-1 h-2 overflow-hidden rounded-full bg-sky-100">
-                <div className="h-full bg-gradient-to-r from-teal-500 to-sky-500 transition-[width]" style={{ width: `${progress}%` }} />
+              <p className="mono-num text-3xl font-semibold">{remain}s</p>
+              <div className="mt-1 h-2 overflow-hidden rounded-full bg-teal-100">
+                <div className="h-full bg-gradient-to-r from-teal-500 to-sky-500 transition-[width] duration-300" style={{ width: `${progress}%` }} />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-white/88 backdrop-blur-sm">
+        <Card className="liquid-card reveal-up">
           <CardHeader>
             <CardTitle>添加或编辑密钥</CardTitle>
           </CardHeader>
@@ -679,12 +687,12 @@ function App() {
           </CardContent>
         </Card>
 
-        <Card className="bg-white/88 backdrop-blur-sm">
+        <Card className="liquid-card reveal-up">
           <CardHeader>
             <CardTitle>导入密钥</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="rounded-xl border border-slate-200/80 bg-white/85 p-4">
               <h3 className="text-sm font-semibold">二维码导入</h3>
               <div className="mt-2 flex flex-wrap gap-2">
                 <Button type="button" onClick={() => setScannerOpen(true)}>
@@ -700,7 +708,7 @@ function App() {
               <p className="mt-2 text-xs text-slate-500">支持 otpauth://totp 与 otpauth-migration://offline 二维码。</p>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="rounded-xl border border-slate-200/80 bg-white/85 p-4">
               <h3 className="text-sm font-semibold">文本导入</h3>
               <Textarea
                 className="mt-2"
@@ -716,7 +724,7 @@ function App() {
           </CardContent>
         </Card>
 
-        <Card className="bg-white/88 backdrop-blur-sm">
+        <Card className="liquid-card reveal-up">
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <CardTitle>我的验证码</CardTitle>
@@ -750,7 +758,7 @@ function App() {
               <div className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-500">还没有密钥，请先在上方添加或导入。</div>
             ) : (
               <ul className="grid gap-2">
-                {entries.map((entry) => {
+                {entries.map((entry, index) => {
                   const codeInfo = codes[entry.id];
                   const isError = Boolean(codeInfo?.error);
                   const isEditing = editingId === entry.id;
@@ -759,8 +767,9 @@ function App() {
                   return (
                     <li
                       key={entry.id}
+                      style={{ animationDelay: `${index * 42}ms` }}
                       className={cn(
-                        "flex flex-col gap-3 rounded-xl border bg-white p-3 md:flex-row md:items-center md:justify-between",
+                        "reveal-up flex flex-col gap-3 rounded-xl border bg-white/92 p-3 md:flex-row md:items-center md:justify-between",
                         isEditing ? "border-sky-400 shadow-[inset_0_0_0_1px_rgba(14,116,144,0.2)]" : "border-slate-200",
                       )}
                     >
@@ -780,7 +789,7 @@ function App() {
                         <button
                           type="button"
                           className={cn(
-                            "justify-self-start bg-transparent p-0 text-left font-mono text-3xl tracking-[0.04em]",
+                            "mono-num justify-self-start bg-transparent p-0 text-left text-3xl tracking-[0.04em]",
                             isError ? "cursor-default text-red-700" : "text-slate-900 hover:text-sky-700",
                           )}
                           onClick={() => void handleCopyCode(entry.id)}
@@ -815,7 +824,7 @@ function App() {
         </Card>
       </div>
 
-      <dialog ref={scannerDialogRef} className="w-[min(560px,calc(100%-1rem))] rounded-xl border border-slate-300 p-3 backdrop:bg-slate-900/55">
+      <dialog ref={scannerDialogRef} className="w-[min(560px,calc(100%-1rem))] rounded-xl border border-slate-300/90 bg-white/96 p-3 backdrop:bg-slate-900/55">
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-sm font-semibold">摄像头扫码导入</h3>
           <Button size="sm" variant="secondary" onClick={() => setScannerOpen(false)}>
@@ -826,7 +835,7 @@ function App() {
         <p className="mt-2 text-xs text-slate-500">将二维码放入画面，识别后自动导入并关闭。</p>
       </dialog>
 
-      <dialog ref={shareDialogRef} className="w-[min(760px,calc(100%-1rem))] rounded-xl border border-slate-300 p-3 backdrop:bg-slate-900/55">
+      <dialog ref={shareDialogRef} className="w-[min(760px,calc(100%-1rem))] rounded-xl border border-slate-300/90 bg-white/96 p-3 backdrop:bg-slate-900/55">
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-sm font-semibold">分享内容</h3>
           <Button size="sm" variant="secondary" onClick={() => setShareOpen(false)}>
