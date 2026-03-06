@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-gaubee}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-gaubee}
+      POSTGRES_DB: ${POSTGRES_DB:-gaubee_2fa}
+    ports:
+      - "5432:5432"
+    volumes:
+      - gaubee_2fa_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gaubee} -d ${POSTGRES_DB:-gaubee_2fa}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  server:
+    build:
+      context: ../..
+      dockerfile: server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${GAUBEE_2FA_HTTP_PORT:-8080}:8080"
+      - "${GAUBEE_2FA_GRPC_PORT:-50051}:50051"
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      GAUBEE_2FA_HTTP: 0.0.0.0:8080
+      GAUBEE_2FA_GRPC: 0.0.0.0:50051
+      GAUBEE_2FA_DB: postgres
+      GAUBEE_2FA_DATABASE_URL: postgres://${POSTGRES_USER:-gaubee}:${POSTGRES_PASSWORD:-gaubee}@postgres:5432/${POSTGRES_DB:-gaubee_2fa}
+      GAUBEE_2FA_ADMIN_TOKEN: ${GAUBEE_2FA_ADMIN_TOKEN:-}
+
+  server-admin:
+    build:
+      context: ../..
+      dockerfile: server-admin/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      SERVER_UPSTREAM: ${GAUBEE_2FA_SERVER_UPSTREAM:-http://server:8080}
+    ports:
+      - "${GAUBEE_2FA_ADMIN_PORT:-4173}:80"
+
+volumes:
+  gaubee_2fa_postgres:

@@ -13,6 +13,8 @@ interface CliOptions {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const repoRoot = resolve(__dirname, "..");
+const webRoot = resolve(repoRoot, "web");
+const releaseAssetBase = "gaubee-2fa";
 
 function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {};
@@ -47,9 +49,9 @@ function parseArgs(argv: string[]): CliOptions {
   return options;
 }
 
-function run(command: string, args: string[], options?: { stdio?: "inherit" | "pipe" }): string {
+function run(command: string, args: string[], options?: { stdio?: "inherit" | "pipe"; cwd?: string }): string {
   const result = execFileSync(command, args, {
-    cwd: repoRoot,
+    cwd: options?.cwd ?? repoRoot,
     stdio: options?.stdio ?? "pipe",
     encoding: "utf8",
   });
@@ -98,7 +100,7 @@ function ensureCommand(command: string): void {
 }
 
 function createReleaseNotes(tag: string, repo: string, userNotes?: string): string {
-  const notes = userNotes?.trim() || "包含最新前端构建产物，支持离线部署与 GitHub Pages。";
+  const notes = userNotes?.trim() || "包含最新 web 静态产物，以及 Rust server/CLI 的基础骨架。";
   return [
     `## ${tag}`,
     "",
@@ -126,8 +128,8 @@ function ensureTag(tag: string): void {
 
 function main(): void {
   const options = parseArgs(process.argv.slice(2));
-  const pkgPath = resolve(repoRoot, "package.json");
-  const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version: string; name: string };
+  const pkgPath = resolve(webRoot, "package.json");
+  const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version: string };
 
   const tag = options.tag ?? `v${pkg.version}`;
   const repo = resolveRepoSlug(options.repo);
@@ -137,12 +139,12 @@ function main(): void {
   ensureCommand("tar");
 
   if (!options.skipBuild) {
-    run("pnpm", ["build"], { stdio: "inherit" });
+    run("pnpm", ["build:web"], { stdio: "inherit" });
   }
 
-  const distPath = resolve(repoRoot, "dist");
+  const distPath = resolve(webRoot, "dist");
   if (!existsSync(distPath)) {
-    throw new Error("未找到 dist 目录，请先执行构建。");
+    throw new Error("未找到 web/dist 目录，请先执行构建。");
   }
 
   const releaseDir = resolve(repoRoot, ".release");
@@ -150,8 +152,8 @@ function main(): void {
     mkdirSync(releaseDir, { recursive: true });
   }
 
-  const archiveName = `${pkg.name}-${tag}-dist.tar.gz`;
-  const latestArchiveName = `${pkg.name}-latest-dist.tar.gz`;
+  const archiveName = `${releaseAssetBase}-${tag}-dist.tar.gz`;
+  const latestArchiveName = `${releaseAssetBase}-latest-dist.tar.gz`;
   const archivePath = resolve(releaseDir, archiveName);
   const latestArchivePath = resolve(releaseDir, latestArchiveName);
   const notesPath = resolve(releaseDir, `release-notes-${tag}.md`);

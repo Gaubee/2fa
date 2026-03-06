@@ -1,0 +1,43 @@
+name: GaubeeTwoFA
+options:
+  createIntermediateGroups: true
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: com.gaubee.twofa
+    PRODUCT_NAME: GaubeeTwoFA
+    SWIFT_VERSION: "6.0"
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+    INFOPLIST_KEY_CFBundleDisplayName: Gaubee 2FA
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+targets:
+  GaubeeTwoFA:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+      - path: Core
+        excludes:
+          - Generated/gaubee_2fa_mobile_bridgeFFI.h
+          - Generated/gaubee_2fa_mobile_bridgeFFI.modulemap
+    dependencies:
+      - framework: Rust/gaubee_2fa_mobile_bridge.xcframework
+    settings:
+      base:
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        TARGETED_DEVICE_FAMILY: "1,2"
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/Frameworks"
+schemes:
+  GaubeeTwoFA:
+    build:
+      targets:
+        GaubeeTwoFA: all
+    run:
+      config: Debug

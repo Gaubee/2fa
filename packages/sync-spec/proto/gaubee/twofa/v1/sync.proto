@@ -1,0 +1,110 @@
+syntax = "proto3";
+
+package gaubee.twofa.v1;
+
+message Hlc {
+  int64 wall_ms = 1;
+  uint32 counter = 2;
+  string node_id = 3;
+}
+
+message SyncOp {
+  string op_id = 1;
+  string entity_id = 2;
+  string kind = 3;
+  Hlc hlc = 4;
+  bytes cipher = 5;
+  bytes aad = 6;
+  string hash_hex = 7;
+  bool deleted = 8;
+}
+
+message Entitlement {
+  string plan = 1;
+  string status = 2;
+  int64 write_enabled_until_ms = 3;
+  int64 archive_until_ms = 4;
+}
+
+message GetChallengeRequest {
+  string public_key_hint = 1;
+}
+
+message GetChallengeResponse {
+  string nonce = 1;
+  int64 server_time_ms = 2;
+  int64 expires_at_ms = 3;
+}
+
+message ExchangeSessionRequest {
+  string public_key_hex = 1;
+  string signature_hex = 2;
+  string device_id = 3;
+  int64 timestamp_ms = 4;
+  string nonce = 5;
+}
+
+message ExchangeSessionResponse {
+  string token = 1;
+  int64 expires_at_ms = 2;
+  string vault_id = 3;
+  Entitlement entitlement = 4;
+}
+
+message PullOpsRequest {
+  string session_token = 1;
+  string vault_id = 2;
+  string base_revision = 3;
+  string cursor = 4;
+}
+
+message PullOpsResponse {
+  repeated SyncOp ops = 1;
+  string new_revision = 2;
+  string cursor = 3;
+}
+
+message PushOpsRequest {
+  string session_token = 1;
+  string vault_id = 2;
+  string base_revision = 3;
+  repeated SyncOp ops = 4;
+}
+
+message PushOpsResponse {
+  repeated string accepted_op_ids = 1;
+  repeated string rejected_op_ids = 2;
+  string new_revision = 3;
+}
+
+message GetRevisionRequest {
+  string session_token = 1;
+  string vault_id = 2;
+}
+
+message GetRevisionResponse {
+  string revision = 1;
+}
+
+message GetEntitlementRequest {
+  string session_token = 1;
+}
+
+message GetEntitlementResponse {
+  Entitlement entitlement = 1;
+}
+
+service AuthService {
+  rpc GetChallenge(GetChallengeRequest) returns (GetChallengeResponse);
+  rpc ExchangeSession(ExchangeSessionRequest) returns (ExchangeSessionResponse);
+}
+
+service SyncService {
+  rpc PullOps(PullOpsRequest) returns (PullOpsResponse);
+  rpc PushOps(PushOpsRequest) returns (PushOpsResponse);
+  rpc GetRevision(GetRevisionRequest) returns (GetRevisionResponse);
+}
+
+service BillingService {
+  rpc GetEntitlement(GetEntitlementRequest) returns (GetEntitlementResponse);
+}

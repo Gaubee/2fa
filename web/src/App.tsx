@@ -6,7 +6,9 @@ import {
   encryptShareText,
   formatImportResult,
   generateTotp,
+  getOtpCoreStatus,
   importEntries,
+  initOtpCore,
   maskSecret,
   normalizeSecret,
   parseImportParam,
@@ -19,15 +21,35 @@ import {
   toOtpauthUri,
 } from "@/lib/otp";
 import type { Entry, EntryCode } from "@/lib/otp";
+import {
+  defaultSelfHostedState,
+  loadVaultState,
+  saveVaultState,
+  type SelfHostedState,
+  type VaultState,
+} from "@/lib/vault-store";
+import {
+  createDeviceId,
+  getSelfProviderEntitlement,
+  getSelfProviderRevision,
+  loginSelfProvider,
+  normalizeBaseUrl,
+  pullSelfProviderOps,
+  pushSelfProviderOps,
+  type SelfProviderSession,
+} from "@/lib/self-provider-api";
+import { buildSnapshotOp, extractLatestSnapshot } from "@/lib/self-provider-snapshot";
 import { cn } from "@/lib/utils";
+import { SelfProviderCard } from "@/components/self-provider-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Camera, Copy, Edit3, Github, QrCode, Share2, Shield, Trash2, Upload } from "lucide-react";
 
-const STORAGE_KEY = "totp.entries.v2";
 const SCAN_INTERVAL_MS = 250;
+
+type EntriesUpdate = Entry[] | ((prevEntries: Entry[]) => Entry[]);
 
 type ToastType = "info" | "success" | "error";
 
@@ -53,41 +75,6 @@ interface BarcodeDetectorConstructorLike {
 
 function getBarcodeDetectorClass(): BarcodeDetectorConstructorLike | undefined {
   return (globalThis as unknown as { BarcodeDetector?: BarcodeDetectorConstructorLike }).BarcodeDetector;
-}
-
-function loadEntries(): Entry[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return [];
-    }
-
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed
-      .map((item) => {
-        if (!item || typeof item !== "object") {
-          return null;
-        }
-
-        const typed = item as Partial<Entry>;
-        const id = typeof typed.id === "string" ? typed.id : createId();
-        const label = typeof typed.label === "string" ? typed.label.trim() : "";
-        const secret = typeof typed.secret === "string" ? normalizeSecret(typed.secret) : "";
-
-        if (!id || !label || validateSecret(secret)) {
-          return null;
-        }
-
-        return { id, label, secret };
-      })
-      .filter((item): item is Entry => item !== null);
-  } catch {
-    return [];
-  }
 }
 
 async function copyText(text: string): Promise<boolean> {
@@ -139,15 +126,129 @@ function qrErrorText(error: unknown): string {
   return "二维码解析失败，请重试。";
 }
 
+function syncErrorText(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return "同步失败，请重试。";
+  }
+
+  if (error.message === "RUST_CRYPTO_UNAVAILABLE") {
+    return "当前浏览器未能加载 Rust/WASM 核心，Self Provider 暂不可用。";
+  }
+
+  if (error.message === "SELF_PROVIDER_HASH_UNAVAILABLE") {
+    return "当前浏览器不支持 SHA-256，无法生成同步快照。";
+  }
+
+  return error.message || "同步失败，请重试。";
+}
+
+function formatDateTime(value: number | null): string {
+  if (!value) {
+    return "未同步";
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(value);
+}
+
+function formatSessionLabel(expiresAtMs: number | null, nowMs: number): string {
+  if (!expiresAtMs) {
+    return "未登录";
+  }
+
+  if (expiresAtMs <= nowMs) {
+    return "已过期";
+  }
+
+  const remainingMinutes = Math.max(1, Math.ceil((expiresAtMs - nowMs) / 60_000));
+  return `${remainingMinutes} 分钟后过期`;
+}
+
+function isActiveSelfHostedSession(state: SelfHostedState, nowMs: number): boolean {
+  return Boolean(
+    state.baseUrl &&
+      state.deviceId &&
+      state.publicKeyHex &&
+      state.vaultId &&
+      state.sessionToken &&
+      state.sessionExpiresAtMs &&
+      state.sessionExpiresAtMs > nowMs,
+  );
+}
+
+function toSelfProviderSession(state: SelfHostedState): SelfProviderSession | null {
+  if (!state.baseUrl || !state.deviceId || !state.publicKeyHex || !state.vaultId || !state.sessionToken || !state.sessionExpiresAtMs) {
+    return null;
+  }
+
+  return {
+    baseUrl: state.baseUrl,
+    deviceId: state.deviceId,
+    publicKeyHex: state.publicKeyHex,
+    sessionToken: state.sessionToken,
+    sessionExpiresAtMs: state.sessionExpiresAtMs,
+    vaultId: state.vaultId,
+    revision: state.revision,
+    entitlement: state.entitlement,
+  };
+}
+
 function App() {
-  const [entries, setEntries] = useState<Entry[]>(() => loadEntries());
+  const [vaultState, setVaultState] = useState<VaultState>(() => loadVaultState());
+  const entries = vaultState.entries;
+  const providers = vaultState.providers;
+  const selfHosted = vaultState.selfHosted;
+  const [coreStatus, setCoreStatus] = useState(() => getOtpCoreStatus());
   const entriesRef = useRef(entries);
   const [codes, setCodes] = useState<Record<string, EntryCode>>({});
   const [now, setNow] = useState(() => Date.now());
 
+  const setEntries = useCallback((nextEntries: EntriesUpdate) => {
+    setVaultState((prev) => ({
+      ...prev,
+      entries: typeof nextEntries === "function" ? nextEntries(prev.entries) : nextEntries,
+      updatedAtMs: Date.now(),
+    }));
+  }, []);
+
+  const replaceEntriesFromSync = useCallback((nextEntries: Entry[], updatedAtMs: number) => {
+    setVaultState((prev) => ({
+      ...prev,
+      entries: nextEntries,
+      updatedAtMs,
+    }));
+  }, []);
+
+  const updateSelfHostedState = useCallback((updater: (prev: SelfHostedState) => SelfHostedState) => {
+    setVaultState((prev) => {
+      const nextSelfHosted = updater(prev.selfHosted);
+      return {
+        ...prev,
+        selfHosted: nextSelfHosted,
+        providers: prev.providers.map((provider) =>
+          provider.id === "self-hosted"
+            ? {
+                ...provider,
+                status: "ready",
+                enabled: isActiveSelfHostedSession(nextSelfHosted, Date.now()),
+                lastSyncAtMs: nextSelfHosted.lastSyncAtMs,
+              }
+            : provider,
+        ),
+      };
+    });
+  }, []);
+
   const [labelInput, setLabelInput] = useState("");
   const [secretInput, setSecretInput] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selfHostedBaseUrlInput, setSelfHostedBaseUrlInput] = useState(() => vaultState.selfHosted.baseUrl);
+  const [selfHostedSecretInput, setSelfHostedSecretInput] = useState("");
+  const [selfHostedAction, setSelfHostedAction] = useState<string | null>(null);
 
   const [importText, setImportText] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -171,6 +272,28 @@ function App() {
   const remain = useMemo(() => remainSeconds(now), [now]);
   const progress = useMemo(() => progressPercent(now), [now]);
   const logoUrl = useMemo(() => `${import.meta.env.BASE_URL}logo-2fa.svg`, []);
+  const selfHostedConnected = useMemo(() => isActiveSelfHostedSession(selfHosted, now), [now, selfHosted]);
+  const selfHostedSession = useMemo(() => toSelfProviderSession(selfHosted), [selfHosted]);
+  const selfHostedConnectionLabel = useMemo(() => {
+    if (selfHostedConnected) {
+      return `已连接 · ${selfHosted.baseUrl}`;
+    }
+    if (selfHosted.baseUrl) {
+      return `待登录 · ${selfHosted.baseUrl}`;
+    }
+    return "未连接";
+  }, [selfHosted.baseUrl, selfHostedConnected]);
+  const selfHostedLastSyncLabel = useMemo(() => formatDateTime(selfHosted.lastSyncAtMs), [selfHosted.lastSyncAtMs]);
+  const selfHostedSessionLabel = useMemo(
+    () => formatSessionLabel(selfHosted.sessionExpiresAtMs, now),
+    [now, selfHosted.sessionExpiresAtMs],
+  );
+  const selfHostedEntitlementLabel = useMemo(() => {
+    if (!selfHosted.entitlement) {
+      return "未读取";
+    }
+    return `${selfHosted.entitlement.plan} · ${selfHosted.entitlement.status}`;
+  }, [selfHosted.entitlement]);
 
   const shareDialogRef = useRef<HTMLDialogElement | null>(null);
 
@@ -198,12 +321,26 @@ function App() {
     const text = formatImportResult(source, result);
     const toastType: ToastType = result.failed > 0 ? "info" : result.added > 0 ? "success" : "error";
     pushToast(text, toastType, 4200);
-  }, [pushToast]);
+  }, [pushToast, setEntries]);
 
   useEffect(() => {
     entriesRef.current = entries;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-  }, [entries]);
+    saveVaultState(vaultState);
+  }, [entries, vaultState]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void initOtpCore().finally(() => {
+      if (!cancelled) {
+        setCoreStatus(getOtpCoreStatus());
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -615,6 +752,173 @@ function App() {
     setSelectedIds(new Set());
   };
 
+  const handleSelfHostedLogin = async () => {
+    const baseUrl = normalizeBaseUrl(selfHostedBaseUrlInput);
+    const secret = selfHostedSecretInput.trim();
+
+    if (!baseUrl) {
+      pushToast("请输入可访问的 Server URL。", "error");
+      return;
+    }
+    if (!secret) {
+      pushToast("请输入身份密钥或助记词。", "error");
+      return;
+    }
+
+    const deviceId = selfHosted.deviceId || createDeviceId();
+    setSelfHostedAction("登录");
+    try {
+      const session = await loginSelfProvider({
+        baseUrl,
+        deviceId,
+        secretInput: secret,
+      });
+      setSelfHostedBaseUrlInput(session.baseUrl);
+      updateSelfHostedState((prev) => ({
+        ...prev,
+        baseUrl: session.baseUrl,
+        deviceId: session.deviceId,
+        publicKeyHex: session.publicKeyHex,
+        vaultId: session.vaultId,
+        sessionToken: session.sessionToken,
+        sessionExpiresAtMs: session.sessionExpiresAtMs,
+        revision: session.revision,
+        entitlement: session.entitlement,
+      }));
+
+      if (entriesRef.current.length === 0 && session.revision !== "0:0") {
+        const pulled = await pullSelfProviderOps(session);
+        const snapshot = await extractLatestSnapshot(secret, pulled.ops);
+        if (snapshot) {
+          replaceEntriesFromSync(snapshot.entries, snapshot.updatedAtMs);
+          updateSelfHostedState((prev) => ({
+            ...prev,
+            revision: pulled.newRevision,
+            lastSyncAtMs: Date.now(),
+          }));
+          pushToast(`Self Provider 已连接，并拉取 ${snapshot.entries.length} 条密钥。`, "success", 4200);
+          return;
+        }
+      }
+
+      pushToast(
+        session.revision === "0:0" ? "Self Provider 已连接，云端暂无快照，可直接推送。" : "Self Provider 已连接，可手动拉取云端快照。",
+        "success",
+        4200,
+      );
+    } catch (error) {
+      pushToast(syncErrorText(error), "error", 4200);
+    } finally {
+      setSelfHostedAction(null);
+    }
+  };
+
+  const handleSelfHostedPull = async () => {
+    if (!selfHostedSession) {
+      pushToast("请先完成 Self Provider 登录。", "error");
+      return;
+    }
+    const secret = selfHostedSecretInput.trim();
+    if (!secret) {
+      pushToast("拉取前需要输入身份密钥或助记词。", "error");
+      return;
+    }
+    if (entriesRef.current.length > 0 && !window.confirm("拉取会用云端快照覆盖当前本地列表，是否继续？")) {
+      return;
+    }
+
+    setSelfHostedAction("拉取");
+    try {
+      const pulled = await pullSelfProviderOps(selfHostedSession, selfHosted.revision);
+      const snapshot = await extractLatestSnapshot(secret, pulled.ops);
+      updateSelfHostedState((prev) => ({
+        ...prev,
+        revision: pulled.newRevision,
+        lastSyncAtMs: Date.now(),
+      }));
+
+      if (!snapshot) {
+        pushToast("云端暂无可解密快照。", "info");
+        return;
+      }
+
+      replaceEntriesFromSync(snapshot.entries, snapshot.updatedAtMs);
+      pushToast(`已从 Self Provider 拉取 ${snapshot.entries.length} 条密钥。`, "success", 4200);
+    } catch (error) {
+      pushToast(syncErrorText(error), "error", 4200);
+    } finally {
+      setSelfHostedAction(null);
+    }
+  };
+
+  const handleSelfHostedPush = async () => {
+    if (!selfHostedSession) {
+      pushToast("请先完成 Self Provider 登录。", "error");
+      return;
+    }
+    const secret = selfHostedSecretInput.trim();
+    if (!secret) {
+      pushToast("推送前需要输入身份密钥或助记词。", "error");
+      return;
+    }
+
+    setSelfHostedAction("推送");
+    try {
+      const snapshot = {
+        version: 1 as const,
+        entries: entriesRef.current,
+        updatedAtMs: vaultState.updatedAtMs,
+      };
+      const op = await buildSnapshotOp(secret, selfHostedSession, snapshot);
+      const result = await pushSelfProviderOps(selfHostedSession, [op], selfHosted.revision);
+      updateSelfHostedState((prev) => ({
+        ...prev,
+        revision: result.newRevision,
+        lastSyncAtMs: Date.now(),
+      }));
+      pushToast(`已推送 ${entriesRef.current.length} 条密钥到 Self Provider。`, "success", 4200);
+    } catch (error) {
+      pushToast(syncErrorText(error), "error", 4200);
+    } finally {
+      setSelfHostedAction(null);
+    }
+  };
+
+  const handleSelfHostedRefresh = async () => {
+    if (!selfHostedSession) {
+      pushToast("请先完成 Self Provider 登录。", "error");
+      return;
+    }
+
+    setSelfHostedAction("刷新");
+    try {
+      const [revision, entitlement] = await Promise.all([
+        getSelfProviderRevision(selfHostedSession),
+        getSelfProviderEntitlement(selfHostedSession),
+      ]);
+      updateSelfHostedState((prev) => ({
+        ...prev,
+        revision: revision.revision,
+        entitlement,
+      }));
+      pushToast("Self Provider 状态已刷新。", "success");
+    } catch (error) {
+      pushToast(syncErrorText(error), "error", 4200);
+    } finally {
+      setSelfHostedAction(null);
+    }
+  };
+
+  const handleSelfHostedLogout = () => {
+    updateSelfHostedState((prev) => ({
+      ...defaultSelfHostedState(),
+      baseUrl: prev.baseUrl,
+      deviceId: prev.deviceId,
+      lastSyncAtMs: prev.lastSyncAtMs,
+    }));
+    pushToast("Self Provider 会话已清除。", "info");
+  };
+
   return (
     <div className="min-h-[100dvh] px-4 py-6 text-slate-900">
       <div className="ambient-grid" />
@@ -628,7 +932,7 @@ function App() {
                 <img src={logoUrl} alt="2FA logo" className="size-10 rounded-xl ring-1 ring-white/60 md:size-12" />
                 <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">两步验证验证码生成器</h1>
               </div>
-              <p className="mt-1 text-sm text-slate-600">本地离线生成 TOTP 验证码，支持扫码导入、链接导入与多选分享。</p>
+              <p className="mt-1 text-sm text-slate-600">本地离线生成 TOTP 验证码，支持扫码导入、链接导入、多选分享与 Self Provider 同步。</p>
               <div className="mt-1 flex flex-wrap gap-2">
                 <a
                   href="https://github.com/Gaubee/2fa"
@@ -642,6 +946,27 @@ function App() {
                 <code className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-700">
                   curl -fsSL .../install-www.sh | sh -s -- --www=./mydir
                 </code>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-700">
+                <span className={cn(
+                  "inline-flex items-center rounded-full border px-3 py-1",
+                  coreStatus === "ready" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800",
+                )}>
+                  Rust Core · {coreStatus === "ready" ? "已启用" : coreStatus === "loading" ? "加载中" : "JS 回退"}
+                </span>
+                {providers.map((provider) => (
+                  <span
+                    key={provider.id}
+                    className={cn(
+                      "inline-flex items-center rounded-full border px-3 py-1",
+                      provider.status === "ready"
+                        ? "border-sky-200 bg-sky-50 text-sky-800"
+                        : "border-slate-200 bg-slate-50 text-slate-600",
+                    )}
+                  >
+                    {provider.label} · {provider.status === "planned" ? "待接入" : provider.enabled ? "已启用" : "可用"}
+                  </span>
+                ))}
               </div>
             </div>
             <div className="rounded-xl border border-teal-100 bg-white/70 p-3">
@@ -683,9 +1008,28 @@ function App() {
                 ) : null}
               </div>
             </form>
-            <p className="mt-2 text-xs text-slate-500">密钥仅保存在当前浏览器 localStorage，不会自动上传。</p>
+            <p className="mt-2 text-xs text-slate-500">当前默认启用 Local Vault，本地同步已支持 Self Provider；GitHub Gist 与 Google Drive 会在后续版本接入。</p>
           </CardContent>
         </Card>
+
+        <SelfProviderCard
+          baseUrl={selfHostedBaseUrlInput}
+          secretInput={selfHostedSecretInput}
+          connected={selfHostedConnected}
+          busyLabel={selfHostedAction}
+          revision={selfHosted.revision}
+          connectionLabel={selfHostedConnectionLabel}
+          lastSyncLabel={selfHostedLastSyncLabel}
+          sessionLabel={selfHostedSessionLabel}
+          entitlementLabel={selfHostedEntitlementLabel}
+          onBaseUrlChange={setSelfHostedBaseUrlInput}
+          onSecretInputChange={setSelfHostedSecretInput}
+          onLogin={() => void handleSelfHostedLogin()}
+          onPull={() => void handleSelfHostedPull()}
+          onPush={() => void handleSelfHostedPush()}
+          onRefresh={() => void handleSelfHostedRefresh()}
+          onLogout={handleSelfHostedLogout}
+        />
 
         <Card className="liquid-card reveal-up">
           <CardHeader>

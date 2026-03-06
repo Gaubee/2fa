@@ -1,0 +1,13 @@
+[package]
+name = "gaubee-2fa-provider-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+serde.workspace = true
+gaubee-2fa-sync-core = { path = "../sync-core" }
+
+[lints]
+workspace = true

@@ -1,0 +1,18 @@
+[package]
+name = "gaubee-2fa-mobile-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "gaubee_2fa_mobile_bridge"
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[dependencies]
+gaubee-2fa-crypto-core = { path = "../crypto-core" }
+gaubee-2fa-otp-core = { path = "../otp-core" }
+thiserror.workspace = true
+uniffi = { version = "0.31", features = ["cli"] }
+
+[lints]
+workspace = true

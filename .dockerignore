@@ -1,0 +1,14 @@
+.git
+.github
+.vscode
+.idea
+**/node_modules
+**/dist
+**/.turbo
+**/.cache
+target
+.local
+.release
+packages/wasm-web/pkg
+*.log
+.DS_Store

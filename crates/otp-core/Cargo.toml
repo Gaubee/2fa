@@ -1,0 +1,14 @@
+[package]
+name = "gaubee-2fa-otp-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+data-encoding.workspace = true
+hmac.workspace = true
+sha1.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

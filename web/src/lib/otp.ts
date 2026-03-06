@@ -1,3 +1,5 @@
+import { generateTotpWithRust, getRustCoreStatus, initRustCore, normalizeSecretWithRust, validateSecretWithRust } from "@/lib/rust-core";
+
 export interface Entry {
   id: string;
   label: string;
@@ -34,8 +36,10 @@ export function createId(): string {
 }
 
 export function normalizeSecret(secret: string): string {
-  return secret.replace(/[\s-]/g, "").toUpperCase();
+  return normalizeSecretWithRust(secret);
 }
+
+export { getRustCoreStatus as getOtpCoreStatus, initRustCore as initOtpCore };
 
 function isBase32Secret(secret: string): boolean {
   return /^[A-Z2-7]+=*$/.test(secret);
@@ -48,6 +52,10 @@ export function validateSecret(secret: string): string {
 
   if (!isBase32Secret(secret)) {
     return "密钥格式无效：只支持 Base32 字符（A-Z、2-7）。";
+  }
+
+  if (getRustCoreStatus() === "ready") {
+    return validateSecretWithRust(secret) ? "密钥格式无效，请检查是否是完整 Base32 密钥。" : "";
   }
 
   try {
@@ -85,6 +93,16 @@ export function progressPercent(nowMs = Date.now()): number {
 }
 
 export async function generateTotp(secret: string, counter: number, digits = TOTP_DIGITS): Promise<string> {
+  if (digits === TOTP_DIGITS) {
+    try {
+      return await generateTotpWithRust(secret, counter);
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== "RUST_CORE_UNAVAILABLE") {
+        throw error;
+      }
+    }
+  }
+
   const keyBytes = decodeBase32(secret);
   const msg = new Uint8Array(8);
   let value = counter;

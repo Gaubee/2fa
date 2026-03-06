@@ -1,0 +1,115 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme inline {
+  --font-sans: "Manrope", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+}
+
+:root {
+  --background: oklch(0.985 0.01 102);
+  --foreground: oklch(0.215 0.018 248);
+  --card: color-mix(in oklab, white 82%, #d8efe8 18%);
+  --card-foreground: oklch(0.22 0.018 248);
+  --popover: oklch(0.995 0.004 100);
+  --popover-foreground: oklch(0.22 0.018 248);
+  --primary: oklch(0.52 0.13 186);
+  --primary-foreground: oklch(0.985 0.003 100);
+  --secondary: color-mix(in oklab, white 65%, #dbe7f5 35%);
+  --secondary-foreground: oklch(0.28 0.018 248);
+  --muted: color-mix(in oklab, white 60%, #edf1f7 40%);
+  --muted-foreground: oklch(0.52 0.02 248);
+  --accent: color-mix(in oklab, white 58%, #d8f2ea 42%);
+  --accent-foreground: oklch(0.25 0.022 248);
+  --destructive: oklch(0.58 0.22 28);
+  --border: color-mix(in oklab, white 32%, #d8e1ef 68%);
+  --input: color-mix(in oklab, white 26%, #dbe4f0 74%);
+  --ring: oklch(0.62 0.11 188);
+  --sidebar: color-mix(in oklab, white 72%, #dbefe8 28%);
+  --sidebar-foreground: oklch(0.23 0.02 248);
+  --sidebar-border: color-mix(in oklab, white 30%, #d6dfeb 70%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(16, 185, 129, 0.16), transparent 28%),
+    radial-gradient(circle at 100% 10%, rgba(14, 165, 233, 0.14), transparent 26%),
+    linear-gradient(180deg, #fafcf8 0%, #f5f9ff 100%);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(13, 148, 136, 0.18);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+}
+
+@media (max-width: 960px) {
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+}

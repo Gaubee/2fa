@@ -1,0 +1,27 @@
+[package]
+name = "gaubee-2fa-server-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+base64.workspace = true
+gaubee-2fa-crypto-core = { path = "../crypto-core" }
+gaubee-2fa-sync-core = { path = "../sync-core" }
+serde.workspace = true
+serde_json.workspace = true
+prost.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[build-dependencies]
+protoc-bin-vendored = "3"
+tonic-prost-build = "0.14"
+
+[lints]
+workspace = true

@@ -1,0 +1,17 @@
+[package]
+name = "gaubee-2fa-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+clap.workspace = true
+gaubee-2fa-crypto-core = { path = "../crates/crypto-core" }
+gaubee-2fa-server-core = { path = "../crates/server-core" }
+serde_json.workspace = true
+tokio.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
+
+[lints]
+workspace = true

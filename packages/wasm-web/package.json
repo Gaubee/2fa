@@ -1,0 +1,14 @@
+{
+  "name": "@gaubee/2fa-wasm-web",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./pkg/gaubee_2fa_wasm_core.d.ts",
+      "default": "./pkg/gaubee_2fa_wasm_core.js"
+    }
+  },
+  "files": [
+    "pkg"
+  ]
+}

@@ -1,0 +1,19 @@
+[package]
+name = "gaubee-2fa-wasm-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+base64.workspace = true
+gaubee-2fa-crypto-core = { path = "../crypto-core" }
+gaubee-2fa-otp-core = { path = "../otp-core" }
+serde.workspace = true
+serde-wasm-bindgen.workspace = true
+wasm-bindgen.workspace = true
+
+[lints]
+workspace = true
