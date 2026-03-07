@@ -7,7 +7,7 @@ pub enum ProviderId {
     Local,
     GitHubGist,
     GoogleDrive,
-    SelfHosted,
+    WebDav,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

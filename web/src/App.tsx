@@ -22,25 +22,21 @@ import {
 } from "@/lib/otp";
 import type { Entry, EntryCode } from "@/lib/otp";
 import {
-  defaultSelfHostedState,
+  defaultWebDavState,
+  isConfiguredWebDav,
   loadVaultState,
   saveVaultState,
-  type SelfHostedState,
   type VaultState,
+  type WebDavState,
 } from "@/lib/vault-store";
 import {
-  createDeviceId,
-  getSelfProviderEntitlement,
-  getSelfProviderRevision,
-  loginSelfProvider,
-  normalizeBaseUrl,
-  pullSelfProviderOps,
-  pushSelfProviderOps,
-  type SelfProviderSession,
-} from "@/lib/self-provider-api";
-import { buildSnapshotOp, extractLatestSnapshot } from "@/lib/self-provider-snapshot";
+  normalizeWebDavBaseUrl,
+  pullWebDavVault,
+  pushWebDavVault,
+  verifyWebDavConfig,
+} from "@/lib/webdav-provider";
 import { cn } from "@/lib/utils";
-import { SelfProviderCard } from "@/components/self-provider-card";
+import { WebDavProviderCard } from "@/components/webdav-provider-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -132,11 +128,19 @@ function syncErrorText(error: unknown): string {
   }
 
   if (error.message === "RUST_CRYPTO_UNAVAILABLE") {
-    return "当前浏览器未能加载 Rust/WASM 核心，Self Provider 暂不可用。";
+    return "当前浏览器未能加载 Rust/WASM 核心，无法加解密 WebDAV 快照。";
   }
 
-  if (error.message === "SELF_PROVIDER_HASH_UNAVAILABLE") {
+  if (error.message === "WEBDAV_HASH_UNAVAILABLE") {
     return "当前浏览器不支持 SHA-256，无法生成同步快照。";
+  }
+
+  if (error.message === "WEBDAV_REVISION_CONFLICT") {
+    return "远端版本已变化，请先刷新或拉取远端后再重试。";
+  }
+
+  if (error.message === "WEBDAV_INVALID_MANIFEST" || error.message === "WEBDAV_INVALID_SNAPSHOT_LINE") {
+    return "远端数据格式无效，无法继续同步。";
   }
 
   return error.message || "同步失败，请重试。";
@@ -155,53 +159,11 @@ function formatDateTime(value: number | null): string {
   }).format(value);
 }
 
-function formatSessionLabel(expiresAtMs: number | null, nowMs: number): string {
-  if (!expiresAtMs) {
-    return "未登录";
-  }
-
-  if (expiresAtMs <= nowMs) {
-    return "已过期";
-  }
-
-  const remainingMinutes = Math.max(1, Math.ceil((expiresAtMs - nowMs) / 60_000));
-  return `${remainingMinutes} 分钟后过期`;
-}
-
-function isActiveSelfHostedSession(state: SelfHostedState, nowMs: number): boolean {
-  return Boolean(
-    state.baseUrl &&
-      state.deviceId &&
-      state.publicKeyHex &&
-      state.vaultId &&
-      state.sessionToken &&
-      state.sessionExpiresAtMs &&
-      state.sessionExpiresAtMs > nowMs,
-  );
-}
-
-function toSelfProviderSession(state: SelfHostedState): SelfProviderSession | null {
-  if (!state.baseUrl || !state.deviceId || !state.publicKeyHex || !state.vaultId || !state.sessionToken || !state.sessionExpiresAtMs) {
-    return null;
-  }
-
-  return {
-    baseUrl: state.baseUrl,
-    deviceId: state.deviceId,
-    publicKeyHex: state.publicKeyHex,
-    sessionToken: state.sessionToken,
-    sessionExpiresAtMs: state.sessionExpiresAtMs,
-    vaultId: state.vaultId,
-    revision: state.revision,
-    entitlement: state.entitlement,
-  };
-}
-
 function App() {
   const [vaultState, setVaultState] = useState<VaultState>(() => loadVaultState());
   const entries = vaultState.entries;
   const providers = vaultState.providers;
-  const selfHosted = vaultState.selfHosted;
+  const webdav = vaultState.webdav;
   const [coreStatus, setCoreStatus] = useState(() => getOtpCoreStatus());
   const entriesRef = useRef(entries);
   const [codes, setCodes] = useState<Record<string, EntryCode>>({});
@@ -223,32 +185,31 @@ function App() {
     }));
   }, []);
 
-  const updateSelfHostedState = useCallback((updater: (prev: SelfHostedState) => SelfHostedState) => {
-    setVaultState((prev) => {
-      const nextSelfHosted = updater(prev.selfHosted);
-      return {
-        ...prev,
-        selfHosted: nextSelfHosted,
-        providers: prev.providers.map((provider) =>
-          provider.id === "self-hosted"
-            ? {
-                ...provider,
-                status: "ready",
-                enabled: isActiveSelfHostedSession(nextSelfHosted, Date.now()),
-                lastSyncAtMs: nextSelfHosted.lastSyncAtMs,
-              }
-            : provider,
-        ),
-      };
-    });
-  }, []);
+const updateWebDavState = useCallback((updater: (prev: WebDavState) => WebDavState) => {
+  setVaultState((prev) => {
+    const nextWebDav = updater(prev.webdav);
+    const enabled = isConfiguredWebDav(nextWebDav);
+    return {
+      ...prev,
+      webdav: nextWebDav,
+      providers: prev.providers.map((provider) =>
+        provider.id === "webdav"
+          ? {
+              ...provider,
+              status: "ready",
+              enabled,
+              lastSyncAtMs: nextWebDav.lastSyncAtMs,
+            }
+          : provider,
+      ),
+    };
+  });
+}, []);
 
-  const [labelInput, setLabelInput] = useState("");
-  const [secretInput, setSecretInput] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [selfHostedBaseUrlInput, setSelfHostedBaseUrlInput] = useState(() => vaultState.selfHosted.baseUrl);
-  const [selfHostedSecretInput, setSelfHostedSecretInput] = useState("");
-  const [selfHostedAction, setSelfHostedAction] = useState<string | null>(null);
+const [labelInput, setLabelInput] = useState("");
+const [secretInput, setSecretInput] = useState("");
+const [editingId, setEditingId] = useState<string | null>(null);
+const [webdavAction, setWebdavAction] = useState<string | null>(null);
 
   const [importText, setImportText] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -268,44 +229,69 @@ function App() {
   const lastDetectAtRef = useRef(0);
   const rafIdRef = useRef<number | null>(null);
 
-  const counter = useMemo(() => currentCounter(now), [now]);
-  const remain = useMemo(() => remainSeconds(now), [now]);
-  const progress = useMemo(() => progressPercent(now), [now]);
-  const logoUrl = useMemo(() => `${import.meta.env.BASE_URL}logo-2fa.svg`, []);
-  const selfHostedConnected = useMemo(() => isActiveSelfHostedSession(selfHosted, now), [now, selfHosted]);
-  const selfHostedSession = useMemo(() => toSelfProviderSession(selfHosted), [selfHosted]);
-  const selfHostedConnectionLabel = useMemo(() => {
-    if (selfHostedConnected) {
-      return `已连接 · ${selfHosted.baseUrl}`;
-    }
-    if (selfHosted.baseUrl) {
-      return `待登录 · ${selfHosted.baseUrl}`;
-    }
-    return "未连接";
-  }, [selfHosted.baseUrl, selfHostedConnected]);
-  const selfHostedLastSyncLabel = useMemo(() => formatDateTime(selfHosted.lastSyncAtMs), [selfHosted.lastSyncAtMs]);
-  const selfHostedSessionLabel = useMemo(
-    () => formatSessionLabel(selfHosted.sessionExpiresAtMs, now),
-    [now, selfHosted.sessionExpiresAtMs],
-  );
-  const selfHostedEntitlementLabel = useMemo(() => {
-    if (!selfHosted.entitlement) {
-      return "未读取";
-    }
-    return `${selfHosted.entitlement.plan} · ${selfHosted.entitlement.status}`;
-  }, [selfHosted.entitlement]);
+const counter = useMemo(() => currentCounter(now), [now]);
+const remain = useMemo(() => remainSeconds(now), [now]);
+const progress = useMemo(() => progressPercent(now), [now]);
+const logoUrl = useMemo(() => `${import.meta.env.BASE_URL}logo-2fa.svg`, []);
+const webdavConfigured = useMemo(() => isConfiguredWebDav(webdav), [webdav]);
+const webdavConnectionLabel = useMemo(() => {
+  if (webdavConfigured) {
+    return `已配置 · ${webdav.baseUrl}`;
+  }
+  if (webdav.baseUrl) {
+    return `待补全 · ${webdav.baseUrl}`;
+  }
+  return "未配置";
+}, [webdav.baseUrl, webdavConfigured]);
+const webdavLastSyncLabel = useMemo(() => formatDateTime(webdav.lastSyncAtMs), [webdav.lastSyncAtMs]);
 
-  const shareDialogRef = useRef<HTMLDialogElement | null>(null);
+const shareDialogRef = useRef<HTMLDialogElement | null>(null);
 
-  const pushToast = useCallback((text: string, type: ToastType = "info", duration = 2800) => {
-    const id = createId();
-    setToasts((prev) => [...prev, { id, text, type }]);
-    window.setTimeout(() => {
-      setToasts((prev) => prev.filter((toast) => toast.id !== id));
-    }, duration);
-  }, []);
+const pushToast = useCallback((text: string, type: ToastType = "info", duration = 2800) => {
+  const id = createId();
+  setToasts((prev) => [...prev, { id, text, type }]);
+  window.setTimeout(() => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  }, duration);
+}, []);
 
-  const handleImport = useCallback(async (rawText: string, source: string) => {
+const resolveWebDavConfig = useCallback(
+  (options: { requireVaultSecret: boolean } = { requireVaultSecret: true }) => {
+    const baseUrl = normalizeWebDavBaseUrl(webdav.baseUrl);
+    const username = webdav.username.trim();
+    const password = webdav.password.trim();
+    const vaultSecret = webdav.vaultSecret.trim();
+
+    if (!baseUrl) {
+      pushToast("请输入可访问的 WebDAV Host。", "error");
+      return null;
+    }
+    if (!username) {
+      pushToast("请输入 WebDAV Account。", "error");
+      return null;
+    }
+    if (!password) {
+      pushToast("请输入 WebDAV Password。", "error");
+      return null;
+    }
+    if (options.requireVaultSecret && !vaultSecret) {
+      pushToast("请输入 Vault Secret。", "error");
+      return null;
+    }
+
+    return {
+      baseUrl,
+      username,
+      password,
+      vaultSecret,
+      revision: webdav.revision,
+    };
+  },
+  [pushToast, webdav],
+);
+
+const handleImport = useCallback(async (rawText: string, source: string) => {
+
     const result = await importEntries(rawText, new Set(entriesRef.current.map((item) => item.secret)));
 
     if (result.entries.length > 0) {
@@ -752,172 +738,128 @@ function App() {
     setSelectedIds(new Set());
   };
 
-  const handleSelfHostedLogin = async () => {
-    const baseUrl = normalizeBaseUrl(selfHostedBaseUrlInput);
-    const secret = selfHostedSecretInput.trim();
+const handleWebDavVerify = async () => {
+  const config = resolveWebDavConfig({ requireVaultSecret: false });
+  if (!config) {
+    return;
+  }
 
-    if (!baseUrl) {
-      pushToast("请输入可访问的 Server URL。", "error");
-      return;
-    }
-    if (!secret) {
-      pushToast("请输入身份密钥或助记词。", "error");
-      return;
-    }
-
-    const deviceId = selfHosted.deviceId || createDeviceId();
-    setSelfHostedAction("登录");
-    try {
-      const session = await loginSelfProvider({
-        baseUrl,
-        deviceId,
-        secretInput: secret,
-      });
-      setSelfHostedBaseUrlInput(session.baseUrl);
-      updateSelfHostedState((prev) => ({
-        ...prev,
-        baseUrl: session.baseUrl,
-        deviceId: session.deviceId,
-        publicKeyHex: session.publicKeyHex,
-        vaultId: session.vaultId,
-        sessionToken: session.sessionToken,
-        sessionExpiresAtMs: session.sessionExpiresAtMs,
-        revision: session.revision,
-        entitlement: session.entitlement,
-      }));
-
-      if (entriesRef.current.length === 0 && session.revision !== "0:0") {
-        const pulled = await pullSelfProviderOps(session);
-        const snapshot = await extractLatestSnapshot(secret, pulled.ops);
-        if (snapshot) {
-          replaceEntriesFromSync(snapshot.entries, snapshot.updatedAtMs);
-          updateSelfHostedState((prev) => ({
-            ...prev,
-            revision: pulled.newRevision,
-            lastSyncAtMs: Date.now(),
-          }));
-          pushToast(`Self Provider 已连接，并拉取 ${snapshot.entries.length} 条密钥。`, "success", 4200);
-          return;
-        }
-      }
-
-      pushToast(
-        session.revision === "0:0" ? "Self Provider 已连接，云端暂无快照，可直接推送。" : "Self Provider 已连接，可手动拉取云端快照。",
-        "success",
-        4200,
-      );
-    } catch (error) {
-      pushToast(syncErrorText(error), "error", 4200);
-    } finally {
-      setSelfHostedAction(null);
-    }
-  };
-
-  const handleSelfHostedPull = async () => {
-    if (!selfHostedSession) {
-      pushToast("请先完成 Self Provider 登录。", "error");
-      return;
-    }
-    const secret = selfHostedSecretInput.trim();
-    if (!secret) {
-      pushToast("拉取前需要输入身份密钥或助记词。", "error");
-      return;
-    }
-    if (entriesRef.current.length > 0 && !window.confirm("拉取会用云端快照覆盖当前本地列表，是否继续？")) {
-      return;
-    }
-
-    setSelfHostedAction("拉取");
-    try {
-      const pulled = await pullSelfProviderOps(selfHostedSession, selfHosted.revision);
-      const snapshot = await extractLatestSnapshot(secret, pulled.ops);
-      updateSelfHostedState((prev) => ({
-        ...prev,
-        revision: pulled.newRevision,
-        lastSyncAtMs: Date.now(),
-      }));
-
-      if (!snapshot) {
-        pushToast("云端暂无可解密快照。", "info");
-        return;
-      }
-
-      replaceEntriesFromSync(snapshot.entries, snapshot.updatedAtMs);
-      pushToast(`已从 Self Provider 拉取 ${snapshot.entries.length} 条密钥。`, "success", 4200);
-    } catch (error) {
-      pushToast(syncErrorText(error), "error", 4200);
-    } finally {
-      setSelfHostedAction(null);
-    }
-  };
-
-  const handleSelfHostedPush = async () => {
-    if (!selfHostedSession) {
-      pushToast("请先完成 Self Provider 登录。", "error");
-      return;
-    }
-    const secret = selfHostedSecretInput.trim();
-    if (!secret) {
-      pushToast("推送前需要输入身份密钥或助记词。", "error");
-      return;
-    }
-
-    setSelfHostedAction("推送");
-    try {
-      const snapshot = {
-        version: 1 as const,
-        entries: entriesRef.current,
-        updatedAtMs: vaultState.updatedAtMs,
-      };
-      const op = await buildSnapshotOp(secret, selfHostedSession, snapshot);
-      const result = await pushSelfProviderOps(selfHostedSession, [op], selfHosted.revision);
-      updateSelfHostedState((prev) => ({
-        ...prev,
-        revision: result.newRevision,
-        lastSyncAtMs: Date.now(),
-      }));
-      pushToast(`已推送 ${entriesRef.current.length} 条密钥到 Self Provider。`, "success", 4200);
-    } catch (error) {
-      pushToast(syncErrorText(error), "error", 4200);
-    } finally {
-      setSelfHostedAction(null);
-    }
-  };
-
-  const handleSelfHostedRefresh = async () => {
-    if (!selfHostedSession) {
-      pushToast("请先完成 Self Provider 登录。", "error");
-      return;
-    }
-
-    setSelfHostedAction("刷新");
-    try {
-      const [revision, entitlement] = await Promise.all([
-        getSelfProviderRevision(selfHostedSession),
-        getSelfProviderEntitlement(selfHostedSession),
-      ]);
-      updateSelfHostedState((prev) => ({
-        ...prev,
-        revision: revision.revision,
-        entitlement,
-      }));
-      pushToast("Self Provider 状态已刷新。", "success");
-    } catch (error) {
-      pushToast(syncErrorText(error), "error", 4200);
-    } finally {
-      setSelfHostedAction(null);
-    }
-  };
-
-  const handleSelfHostedLogout = () => {
-    updateSelfHostedState((prev) => ({
-      ...defaultSelfHostedState(),
-      baseUrl: prev.baseUrl,
-      deviceId: prev.deviceId,
-      lastSyncAtMs: prev.lastSyncAtMs,
+  setWebdavAction("验证");
+  try {
+    const result = await verifyWebDavConfig(config);
+    updateWebDavState((prev) => ({
+      ...prev,
+      baseUrl: config.baseUrl,
+      username: config.username,
+      password: config.password,
+      vaultSecret: config.vaultSecret || prev.vaultSecret,
+      revision: result.manifest?.revision ?? "",
     }));
-    pushToast("Self Provider 会话已清除。", "info");
-  };
+    pushToast(
+      result.manifest
+        ? `WebDAV 配置可用，远端已有 ${result.manifest.entryCount} 条密钥快照。`
+        : "WebDAV 配置可用，远端还没有快照。",
+      "success",
+      4200,
+    );
+  } catch (error) {
+    pushToast(syncErrorText(error), "error", 4200);
+  } finally {
+    setWebdavAction(null);
+  }
+};
+
+const handleWebDavPull = async () => {
+  const config = resolveWebDavConfig();
+  if (!config) {
+    return;
+  }
+  if (entriesRef.current.length > 0 && !window.confirm("拉取会用远端快照覆盖当前本地列表，是否继续？")) {
+    return;
+  }
+
+  setWebdavAction("拉取");
+  try {
+    const pulled = await pullWebDavVault(config);
+    updateWebDavState((prev) => ({
+      ...prev,
+      baseUrl: config.baseUrl,
+      username: config.username,
+      password: config.password,
+      vaultSecret: config.vaultSecret,
+      revision: pulled.manifest?.revision ?? "",
+      lastSyncAtMs: pulled.manifest ? Date.now() : prev.lastSyncAtMs,
+    }));
+
+    if (!pulled.manifest) {
+      pushToast("远端还没有可拉取的快照。", "info");
+      return;
+    }
+
+    replaceEntriesFromSync(pulled.entries, pulled.manifest.updatedAtMs);
+    pushToast(`已从 WebDAV 拉取 ${pulled.entries.length} 条密钥。`, "success", 4200);
+  } catch (error) {
+    pushToast(syncErrorText(error), "error", 4200);
+  } finally {
+    setWebdavAction(null);
+  }
+};
+
+const handleWebDavPush = async () => {
+  const config = resolveWebDavConfig();
+  if (!config) {
+    return;
+  }
+
+  setWebdavAction("推送");
+  try {
+    const manifest = await pushWebDavVault(config, entriesRef.current, vaultState.updatedAtMs);
+    updateWebDavState((prev) => ({
+      ...prev,
+      baseUrl: config.baseUrl,
+      username: config.username,
+      password: config.password,
+      vaultSecret: config.vaultSecret,
+      revision: manifest.revision,
+      lastSyncAtMs: Date.now(),
+    }));
+    pushToast(`已推送 ${entriesRef.current.length} 条密钥到 WebDAV。`, "success", 4200);
+  } catch (error) {
+    pushToast(syncErrorText(error), "error", 4200);
+  } finally {
+    setWebdavAction(null);
+  }
+};
+
+const handleWebDavRefresh = async () => {
+  const config = resolveWebDavConfig({ requireVaultSecret: false });
+  if (!config) {
+    return;
+  }
+
+  setWebdavAction("刷新");
+  try {
+    const result = await verifyWebDavConfig(config);
+    updateWebDavState((prev) => ({
+      ...prev,
+      baseUrl: config.baseUrl,
+      username: config.username,
+      password: config.password,
+      vaultSecret: config.vaultSecret || prev.vaultSecret,
+      revision: result.manifest?.revision ?? "",
+    }));
+    pushToast(result.manifest ? "WebDAV 远端状态已刷新。" : "WebDAV 可访问，远端仍为空。", "success", 4200);
+  } catch (error) {
+    pushToast(syncErrorText(error), "error", 4200);
+  } finally {
+    setWebdavAction(null);
+  }
+};
+
+const handleWebDavClear = () => {
+  updateWebDavState(() => defaultWebDavState());
+  pushToast("WebDAV 配置已清空。", "info");
+};
 
   return (
     <div className="min-h-[100dvh] px-4 py-6 text-slate-900">
@@ -932,7 +874,7 @@ function App() {
                 <img src={logoUrl} alt="2FA logo" className="size-10 rounded-xl ring-1 ring-white/60 md:size-12" />
                 <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">两步验证验证码生成器</h1>
               </div>
-              <p className="mt-1 text-sm text-slate-600">本地离线生成 TOTP 验证码，支持扫码导入、链接导入、多选分享与 Self Provider 同步。</p>
+              <p className="mt-1 text-sm text-slate-600">本地离线生成 TOTP 验证码，支持扫码导入、链接导入、多选分享，以及通过 WebDAV 同步加密快照。</p>
               <div className="mt-1 flex flex-wrap gap-2">
                 <a
                   href="https://github.com/Gaubee/2fa"
@@ -1008,28 +950,30 @@ function App() {
                 ) : null}
               </div>
             </form>
-            <p className="mt-2 text-xs text-slate-500">当前默认启用 Local Vault，本地同步已支持 Self Provider；GitHub Gist 与 Google Drive 会在后续版本接入。</p>
+            <p className="mt-2 text-xs text-slate-500">当前默认启用 Local Vault，并已支持通过 WebDAV 同步加密快照；GitHub Gist 与 Google Drive 会在后续版本接入。</p>
           </CardContent>
         </Card>
 
-        <SelfProviderCard
-          baseUrl={selfHostedBaseUrlInput}
-          secretInput={selfHostedSecretInput}
-          connected={selfHostedConnected}
-          busyLabel={selfHostedAction}
-          revision={selfHosted.revision}
-          connectionLabel={selfHostedConnectionLabel}
-          lastSyncLabel={selfHostedLastSyncLabel}
-          sessionLabel={selfHostedSessionLabel}
-          entitlementLabel={selfHostedEntitlementLabel}
-          onBaseUrlChange={setSelfHostedBaseUrlInput}
-          onSecretInputChange={setSelfHostedSecretInput}
-          onLogin={() => void handleSelfHostedLogin()}
-          onPull={() => void handleSelfHostedPull()}
-          onPush={() => void handleSelfHostedPush()}
-          onRefresh={() => void handleSelfHostedRefresh()}
-          onLogout={handleSelfHostedLogout}
-        />
+<WebDavProviderCard
+  baseUrl={webdav.baseUrl}
+  username={webdav.username}
+  password={webdav.password}
+  vaultSecret={webdav.vaultSecret}
+  configured={webdavConfigured}
+  busyLabel={webdavAction}
+  revision={webdav.revision}
+  connectionLabel={webdavConnectionLabel}
+  lastSyncLabel={webdavLastSyncLabel}
+  onBaseUrlChange={(value) => updateWebDavState((prev) => ({ ...prev, baseUrl: value }))}
+  onUsernameChange={(value) => updateWebDavState((prev) => ({ ...prev, username: value }))}
+  onPasswordChange={(value) => updateWebDavState((prev) => ({ ...prev, password: value }))}
+  onVaultSecretChange={(value) => updateWebDavState((prev) => ({ ...prev, vaultSecret: value }))}
+  onVerify={() => void handleWebDavVerify()}
+  onPull={() => void handleWebDavPull()}
+  onPush={() => void handleWebDavPush()}
+  onRefresh={() => void handleWebDavRefresh()}
+  onClear={handleWebDavClear}
+/>
 
         <Card className="liquid-card reveal-up">
           <CardHeader>

@@ -1,10 +1,10 @@
 import { createId, normalizeSecret, validateSecret, type Entry } from "@/lib/otp";
 
 const LEGACY_ENTRIES_KEY = "totp.entries.v2";
-const VAULT_STORAGE_KEY = "gaubee-2fa.vault.v2";
-const FALLBACK_VAULT_STORAGE_KEY = "gaubee-2fa.vault.v1";
+const VAULT_STORAGE_KEY = "gaubee-2fa.vault.v3";
+const FALLBACK_VAULT_STORAGE_KEYS = ["gaubee-2fa.vault.v2", "gaubee-2fa.vault.v1"];
 
-export type ProviderKind = "local" | "github-gist" | "google-drive" | "self-hosted";
+export type ProviderKind = "local" | "github-gist" | "google-drive" | "webdav";
 export type ProviderStatus = "ready" | "planned";
 
 export interface ProviderState {
@@ -16,31 +16,21 @@ export interface ProviderState {
   lastSyncAtMs: number | null;
 }
 
-export interface VaultEntitlement {
-  plan: string;
-  status: string;
-  writeEnabledUntilMs: number;
-  archiveUntilMs: number;
-}
-
-export interface SelfHostedState {
+export interface WebDavState {
   baseUrl: string;
-  deviceId: string;
-  publicKeyHex: string;
-  vaultId: string;
-  sessionToken: string;
-  sessionExpiresAtMs: number | null;
+  username: string;
+  password: string;
+  vaultSecret: string;
   revision: string;
   lastSyncAtMs: number | null;
-  entitlement: VaultEntitlement | null;
 }
 
 export interface VaultState {
-  schemaVersion: 2;
+  schemaVersion: 3;
   entries: Entry[];
   providers: ProviderState[];
   updatedAtMs: number;
-  selfHosted: SelfHostedState;
+  webdav: WebDavState;
 }
 
 export function loadVaultState(): VaultState {
@@ -50,37 +40,36 @@ export function loadVaultState(): VaultState {
   }
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     entries: readLegacyEntries(),
     providers: defaultProviders(),
     updatedAtMs: Date.now(),
-    selfHosted: defaultSelfHostedState(),
+    webdav: defaultWebDavState(),
   };
 }
 
 export function saveVaultState(state: VaultState): void {
   localStorage.setItem(VAULT_STORAGE_KEY, JSON.stringify(state));
-  localStorage.removeItem(FALLBACK_VAULT_STORAGE_KEY);
+  for (const key of FALLBACK_VAULT_STORAGE_KEYS) {
+    localStorage.removeItem(key);
+  }
   localStorage.removeItem(LEGACY_ENTRIES_KEY);
 }
 
-export function defaultSelfHostedState(): SelfHostedState {
+export function defaultWebDavState(): WebDavState {
   return {
     baseUrl: "",
-    deviceId: "",
-    publicKeyHex: "",
-    vaultId: "",
-    sessionToken: "",
-    sessionExpiresAtMs: null,
-    revision: "0:0",
+    username: "",
+    password: "",
+    vaultSecret: "",
+    revision: "",
     lastSyncAtMs: null,
-    entitlement: null,
   };
 }
 
 function readVaultState(): VaultState | null {
   try {
-    const raw = localStorage.getItem(VAULT_STORAGE_KEY) ?? localStorage.getItem(FALLBACK_VAULT_STORAGE_KEY);
+    const raw = localStorage.getItem(VAULT_STORAGE_KEY) ?? readFallbackVaultState();
     if (!raw) {
       return null;
     }
@@ -89,18 +78,28 @@ function readVaultState(): VaultState | null {
       return null;
     }
 
-    const typed = parsed as Partial<VaultState>;
-    const selfHosted = sanitizeSelfHosted((typed as Record<string, unknown>).selfHosted);
+    const typed = parsed as Partial<VaultState> & { selfHosted?: unknown };
+    const webdav = sanitizeWebDav((typed as Record<string, unknown>).webdav);
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
       entries: sanitizeEntries(typed.entries),
-      providers: sanitizeProviders(typed.providers, selfHosted.lastSyncAtMs, Boolean(selfHosted.sessionToken)),
+      providers: sanitizeProviders(typed.providers, webdav.lastSyncAtMs, isConfiguredWebDav(webdav)),
       updatedAtMs: typeof typed.updatedAtMs === "number" ? typed.updatedAtMs : Date.now(),
-      selfHosted,
+      webdav,
     };
   } catch {
     return null;
   }
+}
+
+function readFallbackVaultState(): string | null {
+  for (const key of FALLBACK_VAULT_STORAGE_KEYS) {
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      return raw;
+    }
+  }
+  return null;
 }
 
 function readLegacyEntries(): Entry[] {
@@ -109,8 +108,7 @@ function readLegacyEntries(): Entry[] {
     if (!raw) {
       return [];
     }
-    const parsed = JSON.parse(raw) as unknown;
-    return sanitizeEntries(parsed);
+    return sanitizeEntries(JSON.parse(raw) as unknown);
   } catch {
     return [];
   }
@@ -130,27 +128,21 @@ function sanitizeEntries(value: unknown): Entry[] {
       const label = typeof typed.label === "string" ? typed.label.trim() : "";
       const secret = typeof typed.secret === "string" ? normalizeSecret(typed.secret) : "";
       const id = typeof typed.id === "string" && typed.id ? typed.id : createId();
-
       if (!label || !secret || validateSecret(secret)) {
         return null;
       }
-
       return { id, label, secret };
     })
     .filter((entry): entry is Entry => entry !== null);
 }
 
-function sanitizeProviders(
-  value: unknown,
-  selfHostedLastSyncAtMs: number | null,
-  selfHostedEnabled: boolean,
-): ProviderState[] {
+function sanitizeProviders(value: unknown, webdavLastSyncAtMs: number | null, webdavEnabled: boolean): ProviderState[] {
   const defaults = new Map(defaultProviders().map((provider) => [provider.id, provider]));
   if (!Array.isArray(value)) {
-    defaults.set("self-hosted", {
-      ...defaults.get("self-hosted")!,
-      enabled: selfHostedEnabled,
-      lastSyncAtMs: selfHostedLastSyncAtMs,
+    defaults.set("webdav", {
+      ...defaults.get("webdav")!,
+      enabled: webdavEnabled,
+      lastSyncAtMs: webdavLastSyncAtMs,
     });
     return [...defaults.values()];
   }
@@ -170,60 +162,33 @@ function sanitizeProviders(
       kind: id,
       label: typeof typed.label === "string" ? typed.label : defaults.get(id)!.label,
       enabled: typeof typed.enabled === "boolean" ? typed.enabled : defaults.get(id)!.enabled,
-      status: id === "local" || id === "self-hosted" ? "ready" : typed.status === "ready" ? "ready" : "planned",
+      status: id === "local" || id === "webdav" ? "ready" : typed.status === "ready" ? "ready" : "planned",
       lastSyncAtMs: typeof typed.lastSyncAtMs === "number" ? typed.lastSyncAtMs : defaults.get(id)!.lastSyncAtMs,
     });
   }
 
-  defaults.set("self-hosted", {
-    ...defaults.get("self-hosted")!,
-    enabled: selfHostedEnabled,
-    lastSyncAtMs: selfHostedLastSyncAtMs,
+  defaults.set("webdav", {
+    ...defaults.get("webdav")!,
+    enabled: webdavEnabled,
+    lastSyncAtMs: webdavLastSyncAtMs,
     status: "ready",
   });
 
   return [...defaults.values()];
 }
 
-function sanitizeSelfHosted(value: unknown): SelfHostedState {
+function sanitizeWebDav(value: unknown): WebDavState {
   if (!value || typeof value !== "object") {
-    return defaultSelfHostedState();
+    return defaultWebDavState();
   }
-
-  const typed = value as Partial<SelfHostedState>;
+  const typed = value as Partial<WebDavState>;
   return {
     baseUrl: typeof typed.baseUrl === "string" ? typed.baseUrl.trim() : "",
-    deviceId: typeof typed.deviceId === "string" ? typed.deviceId : "",
-    publicKeyHex: typeof typed.publicKeyHex === "string" ? typed.publicKeyHex : "",
-    vaultId: typeof typed.vaultId === "string" ? typed.vaultId : "",
-    sessionToken: typeof typed.sessionToken === "string" ? typed.sessionToken : "",
-    sessionExpiresAtMs: typeof typed.sessionExpiresAtMs === "number" ? typed.sessionExpiresAtMs : null,
-    revision: typeof typed.revision === "string" && typed.revision ? typed.revision : "0:0",
+    username: typeof typed.username === "string" ? typed.username.trim() : "",
+    password: typeof typed.password === "string" ? typed.password.trim() : "",
+    vaultSecret: typeof typed.vaultSecret === "string" ? typed.vaultSecret : "",
+    revision: typeof typed.revision === "string" ? typed.revision : "",
     lastSyncAtMs: typeof typed.lastSyncAtMs === "number" ? typed.lastSyncAtMs : null,
-    entitlement: sanitizeEntitlement(typed.entitlement),
-  };
-}
-
-function sanitizeEntitlement(value: unknown): VaultEntitlement | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const typed = value as Partial<VaultEntitlement>;
-  if (
-    typeof typed.plan !== "string" ||
-    typeof typed.status !== "string" ||
-    typeof typed.writeEnabledUntilMs !== "number" ||
-    typeof typed.archiveUntilMs !== "number"
-  ) {
-    return null;
-  }
-
-  return {
-    plan: typed.plan,
-    status: typed.status,
-    writeEnabledUntilMs: typed.writeEnabledUntilMs,
-    archiveUntilMs: typed.archiveUntilMs,
   };
 }
 
@@ -232,6 +197,10 @@ function defaultProviders(): ProviderState[] {
     { id: "local", kind: "local", label: "Local Vault", enabled: true, status: "ready", lastSyncAtMs: null },
     { id: "github-gist", kind: "github-gist", label: "GitHub Gist", enabled: false, status: "planned", lastSyncAtMs: null },
     { id: "google-drive", kind: "google-drive", label: "Google Drive", enabled: false, status: "planned", lastSyncAtMs: null },
-    { id: "self-hosted", kind: "self-hosted", label: "Self Provider", enabled: false, status: "ready", lastSyncAtMs: null },
+    { id: "webdav", kind: "webdav", label: "WebDAV", enabled: false, status: "ready", lastSyncAtMs: null },
   ];
+}
+
+export function isConfiguredWebDav(state: WebDavState): boolean {
+  return Boolean(state.baseUrl && state.username && state.password && state.vaultSecret);
 }
