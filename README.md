@@ -8,6 +8,7 @@
 - 静态部署、GitHub Pages 与 Release 产物
 
 仓库地址：<https://github.com/Gaubee/2fa>
+关联仓库：<https://github.com/Gaubee/dweb_cloud>
 
 ## 当前架构
 
@@ -156,5 +157,5 @@ pnpm mobile:ios:project
 
 ## 相关项目
 
-- `dwebCloud`：独立的 WebDAV / 存储服务项目，用于承载自托管同步、授权与计费边界。
+- [`dwebCloud`](https://github.com/Gaubee/dweb_cloud)：独立的 WebDAV / 存储服务项目，用于承载自托管同步、授权与计费边界。
 - 2FA 当前只消费标准 Provider，不再直接内嵌后端实现。
