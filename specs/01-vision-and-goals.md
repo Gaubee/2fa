@@ -3,125 +3,78 @@
 ## 文档状态
 
 - Status: Active
-- Scope: 全项目愿景、阶段目标、非目标
+- Scope: 产品愿景、长期方向、阶段目标
 
-## 项目愿景
+## 核心愿景
 
-Gaubee 2FA 的目标不是做一个单纯的验证码网页，而是构建一个：
+Gaubee 2FA 的目标是做一个：
 
-- 以隐私和可迁移性为核心的 2FA 管理产品
-- 以 Rust 共享核心驱动的跨平台产品族
-- 既支持浏览器本地离线使用，也支持多 Provider 跨设备同步
-- 既支持官方托管，也支持用户私有化部署
-- 既可开源自部署，也可以形成低成本商业化运营
+- `Local-first`：默认不依赖账号与服务端即可使用
+- `Privacy-first`：远端同步不以明文托管为前提
+- `Portability-first`：用户随时可以导出、迁移、自部署
+- `Rust-core-first`：Web / Mobile / Extension 复用同一套核心逻辑
 
-## 核心价值观
+## 当前阶段的关键决策
 
-### 1. Local-first
+为了降低复杂度并提高可维护性，当前版本采用：
 
-默认能力必须在本地可用：
+- 2FA 仓库只保留客户端与共享核心
+- 不再内嵌专有同步服务与后台管理
+- 远端同步统一通过标准 Provider 接入
+- 自有同步能力迁移到独立项目 `dwebCloud`
 
-- 本地保存密钥
-- 本地生成 TOTP
-- 本地导入与分享
-- 本地离线查看与复制验证码
+这个决策的目的：
 
-### 2. Privacy-first
-
-服务端不是信任前提：
-
-- 不能要求用户把明文密钥交给服务端
-- 同步数据必须优先采用端到端加密模型
-- 自建 Provider 与官方托管 Provider 都必须以“服务器不可直接读取明文”为原则
-
-### 3. Portability-first
-
-用户的数据和使用习惯不能被某个平台锁死：
-
-- 支持导入导出 `otpauth://...`
-- 支持通过 GitHub / Google / 自托管等多 Provider 同步
-- 支持浏览器、移动端、扩展、CLI、AI 自动化等多个入口
-
-### 4. Open deployment
-
-项目既要适合个人离线使用，也要适合团队、社区和私有部署：
-
-- Web 可静态部署
-- Server / Admin 可 Docker 化部署
-- 移动端与扩展可独立分发
-- 核心能力可以复用到不同平台
+- 遵循 `KISS`：2FA 只聚焦验证码产品本身
+- 遵循 `YAGNI`：不在当前仓库继续维护高度耦合的后端体系
+- 遵循 `DRY`：把通用存储服务沉淀到可复用的独立项目
+- 遵循 `SOLID`：让客户端与存储服务通过清晰接口解耦
 
 ## 阶段目标
 
-### Phase 1: Web 本地产品闭环
+### Phase 1. Web 本地产品闭环
 
 状态：`Implemented`
 
 目标：
 
-- 支持多条 2FA 密钥管理
-- 支持备注名
-- 支持倒计时与自动刷新
-- 支持扫码导入、图片二维码导入、分享与点击复制
-- 支持本地持久化
+- 用户无需账号即可完成录入、导入、生成、复制、分享
+- 静态部署后可直接投入日常使用
 
-### Phase 2: Self Provider 同步闭环
+### Phase 2. WebDAV Provider 闭环
 
-状态：`Implemented / In Progress`
+状态：`Implemented / Ready for Acceptance`
 
 目标：
 
-- 通过用户密钥派生身份
-- 通过 challenge + signature 建立会话
-- 通过加密 snapshot / ops 完成同步
-- 引入 entitlement / billing 的读写边界
-- 提供 server-admin 做运营配置
+- 让 2FA 通过标准 WebDAV 接入远端同步
+- 不要求 2FA 内置专有后端
+- 可对接 dwebCloud 或任意兼容服务
 
-### Phase 3: 多 Provider 同步
+### Phase 3. dwebCloud 外部集成
 
-状态：`Planned`
+状态：`In Progress`
 
 目标：
 
-- GitHub Gist Provider
-- Google Drive Provider
-- 自有密钥 Provider
-- 统一 Provider 抽象与切换体验
+- 把自有托管、授权、计费与 WebDAV 能力迁移到独立项目
+- 让 2FA 保持纯客户端产品属性
 
-### Phase 4: 多端产品族
+### Phase 4. 多端产品族
 
 状态：`In Progress / Planned`
 
 目标：
 
-- Android 原生应用
-- iOS 原生应用
-- 浏览器扩展
-- CLI
-- AI Skills / 自动化集成
-
-## 商业目标
-
-商业化不是第一目标，但产品需要具备可持续运营能力：
-
-- 免费用户可以完全本地使用
-- 付费能力主要针对同步与托管服务
-- 私有部署可以跳过官方认证与计费逻辑
-- 官方服务应保持低成本、透明和可迁移
+- Android / iOS / Extension / CLI 继续复用 Rust 共享核心
+- 优先完成本地模式，再逐步接入 Provider 同步
 
 ## 非目标
 
-以下事项当前不是优先目标：
+当前阶段明确不在本仓库内继续推进：
 
-- 为商业化而牺牲开源与自部署能力
-- 为了“云同步”而让服务端持有明文密钥
-- 过早引入复杂社交、团队协作、营销漏斗系统
-- 为所有平台一次性做完全部高级能力
+- 内置数据库驱动的专有同步服务
+- 内置 `server-admin` 管理后台
+- 绑定专有会话协议的 2FA 内部后端接口
 
-## 当前产品判断
-
-当前最重要的路线不是继续扩散需求，而是：
-
-1. 把文档、规格和工作流沉淀为稳定真源
-2. 把 Web、Server、Admin、Mobile 的边界讲清楚
-3. 在新机器上恢复稳定的开发节奏
+这些能力如果需要继续推进，应在 `dwebCloud` 或其配套仓库中实现。

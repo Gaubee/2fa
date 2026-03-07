@@ -1,7 +1,7 @@
 use gaubee_2fa_crypto_core::{CryptoError, derive_identity};
 use gaubee_2fa_otp_core::{
-    DEFAULT_DIGITS, DEFAULT_PERIOD_SECONDS, OtpError, generate_totp_with_period,
-    normalize_secret, validate_secret,
+    DEFAULT_DIGITS, DEFAULT_PERIOD_SECONDS, OtpError, generate_totp_with_period, normalize_secret,
+    validate_secret,
 };
 use thiserror::Error;
 
@@ -139,7 +139,8 @@ mod tests {
 
     #[test]
     fn validate_secret_text_returns_normalized_secret() {
-        let normalized = validate_secret_text("gezd gnbv gy3t qojq gezd gnbv gy3t qojq".into()).unwrap();
+        let normalized =
+            validate_secret_text("gezd gnbv gy3t qojq gezd gnbv gy3t qojq".into()).unwrap();
         assert_eq!(normalized, "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ");
     }
 

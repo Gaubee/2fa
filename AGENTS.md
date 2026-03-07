@@ -4,65 +4,69 @@
 
 ## 1. 原始愿景
 
-Gaubee 2FA 的原始目标不是做一个单一网页，而是构建一个：
+Gaubee 2FA 的目标不是只做一个验证码网页，而是构建一个：
 
 - 以本地优先、隐私优先、可迁移为核心的 2FA 产品
 - 以 Rust 共享核心驱动的多端产品族
-- 同时支持本地离线、第三方 Provider 同步、自托管同步和私有部署
-- 可以商业化运营，但不以牺牲开源、自部署和数据主权为代价
+- 同时支持本地离线、第三方 Provider 同步与私有部署
+- 不把任意单一后端当作产品存在的前提
 
-在任何开发决策中，都优先对齐这个愿景，而不是只对齐当前某个局部功能。
+当前阶段的架构性决策：
+
+- `2fa` 仓库只负责客户端与共享核心
+- 外部同步通过标准 Provider 接入
+- 自有托管能力迁移到独立项目 `dwebCloud`
 
 ## 2. 真源分层
 
-### 产品真源
-
-先读：
+阅读顺序：
 
 1. `README.md`
-2. `specs/README.md`
-3. 对应模块 spec
-4. 相关代码实现
+2. `ROADMAP.md`
+3. `specs/README.md`
+4. 相关 spec
+5. 对应代码实现
 
 职责分工：
 
-- `specs/`: 负责产品规格、模块边界、目标状态
-- `AGENTS.md`: 负责开发工作流、最佳实践、元规则
-- `CHAT.md`: 负责保存用户原始输入轨迹
+- `ROADMAP.md`：阶段目标、状态与待验收事项
+- `specs/`：产品规格、模块边界、目标状态
+- `AGENTS.md`：开发工作流、最佳实践、元规则
+- `CHAT.md`：用户原始需求留档
 
-如果三者冲突，优先顺序为：
+发生冲突时，优先级为：
 
 1. 用户最新明确要求
 2. 相关 `specs/`
-3. `AGENTS.md`
-4. 当前代码现状
+3. `ROADMAP.md`
+4. `AGENTS.md`
+5. 当前代码现状
 
 ## 3. 开发前必做流程
 
-任何一次正式开发前，都必须执行以下流程：
+任何一次正式开发前，都必须执行：
 
-1. 阅读 `specs/README.md` 和相关 spec
-2. 阅读对应模块当前代码
-3. 找出当前实现与 spec 的差距
-4. 基于差距设计一个明确的施工计划
-5. 将施工计划发给用户确认
-6. 只有在用户确认后，才进入正式实现
+1. 阅读 `ROADMAP.md`
+2. 阅读 `specs/README.md` 与相关 spec
+3. 阅读对应模块代码
+4. 找出实现与 spec 的差距
+5. 形成明确施工计划
+6. 让用户确认计划
+7. 确认后再开始开发
 
-禁止直接跳到编码，除非用户明确授予“无需先确认计划”的权限。
+除非用户明确授权无需计划确认，否则不要直接跳进编码。
 
 ## 4. 标准施工流程
 
-### 阶段 A: 理解
+### A. 理解
 
-要求：
+- 先理解模块职责边界
+- 先识别 KISS / YAGNI / DRY / SOLID 风险
+- 先判断当前实现是否与 spec 一致
 
-- 先理解目标模块的职责边界
-- 先识别是否存在 KISS / YAGNI / DRY / SOLID 风险
-- 先判断当前代码是否和 spec 一致
+### B. 规划
 
-### 阶段 B: 规划
-
-输出必须包含：
+施工计划必须说明：
 
 - 本次目标
 - 修改范围
@@ -70,118 +74,60 @@ Gaubee 2FA 的原始目标不是做一个单一网页，而是构建一个：
 - 测试计划
 - 哪些 spec 需要回写
 
-### 阶段 C: 实施
-
-要求：
+### C. 实施
 
 - 优先做最小闭环
 - 不做无确认的大范围扩展
-- 新增结构必须尽量贴合现有目录规划
+- 优先移除已经失效的复杂度
 - 优先抽离重复逻辑，避免临时复制代码
 
-### 阶段 D: 测试
-
-要求：
+### D. 测试
 
 - 跑当前改动范围内的必要测试
-- 如果缺环境无法跑，必须记录未验证项
-- 不能把“理论上可以”当作“已经验证”
+- 缺环境无法跑时，必须记录未验证项
+- 不把“理论可行”当作“已经验证”
 
-### 阶段 E: 交付
+### E. 交付
 
 交付前必须：
 
-1. 回写对应 `specs/`
-2. 说明实现结果与未完成项
-3. 等用户确认
-4. 用户确认后再提交代码
+1. 回写相关 `specs/`
+2. 说明已完成内容与未完成项
+3. 用户确认后再提交代码
 
-## 5. 文档回写规则
+## 5. 技术原则
 
-以下变更完成后，必须更新 `specs/`：
-
-- 新功能落地
-- 旧功能行为变化
-- 模块职责变化
-- 数据模型变化
-- 部署流程变化
-- 测试流程变化
-
-不要把关键信息只留在聊天里。
-
-## 6. 技术偏好与最佳实践
-
-### 通用原则
-
-- 遵循 `KISS`, `YAGNI`, `DRY`, `SOLID`
-- 优先构建职责单一、可替换、可测试的模块
-- 优先使用共享 Rust 核心沉淀 OTP / 加密 / 同步基础能力
-- 对于常见、稳定、可复用的能力，优先考虑是否沉淀到个人标准库
-
-### TypeScript
-
+- 严格遵循 `KISS / YAGNI / DRY / SOLID`
 - 强类型优先，原则上不使用 `any` / `as any` / `@ts-nocheck`
-- 以 type-safe 推动 runtime-safe
-- 优先使用 `zod`、`ts-pattern`
-- 脚本优先使用 `tsx` 执行的 TypeScript 文件
+- Web 侧优先 `React 19 + shadcn/ui + tailwindcss v4`
+- Web / Mobile / Extension 共享 Rust 核心
+- 同步能力优先依赖标准 Provider，而不是和专有后端强耦合
 
-### Frontend
+## 6. 当前仓库约束
 
-- React 19+
-- 优先使用 `shadcn/ui`、`lucide-react`、`motion/react`
-- 优先使用 `@tanstack/react-store`、`@tanstack/react-router`、`@tanstack/react-query`、`@tanstack/react-table`
-- 样式基线为 `tailwindcss v4`
-- 响应式优先使用 `@container` 与 `grid`
-- 默认滚动条风格优先采用 `tailwind-scrollbar`
+### Web
 
-### Workspace 与构建
+- Web 是当前主交付物，必须始终保持可独立静态部署
+- 当前唯一已落地的远端 Provider 是 `WebDAV`
+- `Vault Secret` 只用于本地加解密，不能假定服务端可信
 
-- Monorepo 基线：`pnpm + pnpm-workspace + lerna`
-- 前端构建基线：`vite`
-- 后端或库打包可优先考虑 `rolldown / tsdown`
-- 统一使用 `prettier + prettier-plugin-organize-imports + prettier-plugin-tailwindcss`
-
-### 数据与本地存储
-
-- 浏览器本地存储优先考虑 `idb`、`idb-keyval`、`Dexie.js`
-- 只有在业务复杂度确实需要时，才引入更重的本地数据库抽象
-
-### 搜索外部依赖文档
-
-- 优先使用 Context7 查询官方文档
-- 若文档不足，再读 `node_modules/*`
-- 阅读顺序：`README.md` -> `package.json` -> `exports` -> `.js/.d.ts`
-
-### 个人标准库
-
-可优先评估：
-
-- `/Users/kzf/Dev/GitHub/std`
-- `@gaubee/util`
-- `@gaubee/node`
-- `@gaubee/nodekit`
-
-### server-admin 特殊规则
-
-开发 `server-admin/` 时必须遵守：
-
-- `https://ui.shadcn.com/llms.txt`
-- 使用 `shadcn/ui` open code 组合方式
-- 优先遵循官方关于 `Vite`、`React 19`、`Tailwind CSS v4`、`Sidebar`、`Dialog`、`Data Table`、`Form`、`Toast` 的模式
-
-### Rust
+### Rust Core
 
 - 新的共享能力优先落进 `crates/`
-- 平台桥接优先薄封装，不在平台层重写核心逻辑
-- 对外导出的类型和错误模型要保持稳定
-- 优先把跨平台能力放在 Rust，而不是在每个平台重复实现
+- 平台层优先薄封装，不重复实现核心逻辑
+- 对外导出的类型和错误模型尽量稳定
+
+### Admin / 后端边界
+
+- 本仓库当前不再内置 `server` / `server-admin`
+- 如果未来要继续做管理后台，应放到 `dwebCloud` 或对应后端仓库中
+- 届时仍必须遵守 `https://ui.shadcn.com/llms.txt` 的 `shadcn/ui` 最佳实践
 
 ## 7. 文件与注释规则
 
-- 积极维护清晰目录结构
+- 维护清晰目录结构
 - 单文件通常控制在 200 行左右，超过 300 行要主动考虑拆分
-- 如果需要拆分文件，默认先在计划里说明，除非用户已经给予完全授权
-- 对外接口、HTTP / RPC 接口、导出 API 需要有必要注释
+- 对外接口、导出 API、HTTP / RPC 接口必须有必要注释
 - 如果实现低于 spec，要留下 `TODO` / `FIXME`
 - 注释语言与周围文件保持一致
 
@@ -189,9 +135,9 @@ Gaubee 2FA 的原始目标不是做一个单一网页，而是构建一个：
 
 优先使用：
 
-- TypeScript: `vitest + jsdom`
-- E2E: `storybook + playwright`
-- Rust: `cargo test`
+- TypeScript：`vitest + jsdom`
+- E2E：`storybook + playwright`
+- Rust：`cargo test`
 
 每次交付必须说明：
 
@@ -204,18 +150,16 @@ Gaubee 2FA 的原始目标不是做一个单一网页，而是构建一个：
 - 提交前阅读 `/Users/kzf/.codex/git-committer.md`
 - 不回滚用户已有改动
 - 不使用破坏性 git 命令
-- 用户未确认前，不要抢先提交代码
+- 用户未确认前，不要主动提交
 
-## 10. 迁移开发环境后的默认工作流
+## 10. 新机器默认工作流
 
-由于当前会切换到另一台开发机器，后续开发要严格遵守：
+迁移到新的开发机器后，默认工作流保持为：
 
-1. 先阅读 `specs/`
-2. 再阅读 `AGENTS.md`
-3. 基于两者形成施工计划
-4. 让用户确认计划
-5. 再开始开发与测试
-6. 完成后回写 `specs/`
+1. 先读 `ROADMAP.md`
+2. 再读 `specs/`
+3. 再读 `AGENTS.md`
+4. 输出施工计划
+5. 用户确认后实施
+6. 完成后测试并回写 spec
 7. 用户确认后再提交代码
-
-这是后续所有开发任务的默认工作流。

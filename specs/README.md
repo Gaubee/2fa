@@ -2,6 +2,13 @@
 
 `specs/` 是本仓库的产品与模块规格真源，负责回答“这个项目要做什么”。
 
+配套阅读：
+
+- 根目录 [ROADMAP.md](../ROADMAP.md) 负责回答“当前优先做什么、阶段推进到哪一步”。
+- 根目录 [AGENTS.md](../AGENTS.md) 负责回答“应该如何开发与交付”。
+
+如果 `ROADMAP.md` 与具体 spec 冲突，以具体 spec 为准。
+
 ## 阅读顺序
 
 1. [01-vision-and-goals.md](./01-vision-and-goals.md)
@@ -13,21 +20,21 @@
    - [06-client-platform-spec.md](./06-client-platform-spec.md)
    - [07-engineering-quality-and-release-spec.md](./07-engineering-quality-and-release-spec.md)
 
+## 当前结构含义
+
+- `01`：产品愿景与阶段目标
+- `02`：核心产品模型与数据边界
+- `03`：Web 单页应用的功能规格
+- `04`：同步、安全与 Provider 抽象
+- `05`：2FA 与外部同步服务的职责边界
+- `06`：Android / iOS / Extension / CLI 等客户端规划
+- `07`：工程质量、测试、发布与交付规则
+
 ## 使用原则
 
-- `specs/` 记录目标、边界、职责、约束和验收条件。
-- `AGENTS.md` 记录开发元规则、工作流和最佳实践。
-- 代码实现与 `specs/` 不一致时，必须显式标注是：
+- `specs/` 记录目标、边界、职责、约束和验收条件
+- 实现和 spec 不一致时，必须明确指出是：
   - `Spec 已过期`
   - `代码未完成`
   - `实现偏离设计`
-- 新功能开发完成后，必须回写对应 spec，确保未来机器迁移或换人接手时不会丢失上下文。
-
-## 当前状态标记
-
-文档中统一使用以下状态：
-
-- `Implemented`: 已有代码落地。
-- `In Progress`: 已开始实现但未闭环。
-- `Planned`: 已明确进入路线图，但尚未开发。
-- `Exploration`: 仍在调研或需要进一步决策。
+- 新功能落地或旧边界变化后，必须回写对应 spec

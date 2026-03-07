@@ -1,57 +1,145 @@
 # 2FA Workspace
 
-基于 `Vite + React + TypeScript` 的多包工作区，包含可直接使用的 2FA Web 前端、Rust 跨端核心、自托管同步服务和独立部署的管理后台。
+本仓库是 `Gaubee 2FA` 的客户端工作区，聚焦于：
+
+- `web/` 单页 2FA 应用
+- Rust 共享核心
+- 移动端与扩展的客户端基础工程
+- 静态部署、GitHub Pages 与 Release 产物
 
 仓库地址：<https://github.com/Gaubee/2fa>
 
+## 当前架构
+
+当前版本采用更简单的边界：
+
+- `2fa` 仓库只负责客户端与共享核心。
+- 自托管同步不再内嵌在本仓库中。
+- 远端同步统一通过标准 Provider 接入，当前已落地 `WebDAV`。
+- `dwebCloud` 作为独立项目承载 WebDAV / 存储 / 授权 / 计费能力，2FA 只消费它暴露出来的 Provider 接口。
+
+这符合当前的 `KISS / YAGNI` 目标：2FA 产品先保持“前端可独立部署、后端可替换”的最小闭环。
+
 ## 文档
 
-- [specs/README.md](./specs/README.md): 产品与模块规格真源。
-- [AGENTS.md](./AGENTS.md): 开发元规则、最佳实践与标准工作流。
-- [CHAT.md](./CHAT.md): 用户原始需求输入轨迹。
+- [ROADMAP.md](./ROADMAP.md)：愿景、阶段状态、待验收事项。
+- [specs/README.md](./specs/README.md)：产品与模块规格真源。
+- [AGENTS.md](./AGENTS.md)：开发工作流、最佳实践、元规则。
+- [CHAT.md](./CHAT.md)：用户原始需求输入轨迹。
 
 ## 目录
 
-- `web/`: 当前可用的单页 2FA 应用，支持本地离线保存、扫码导入、分享、点击复制、Self Provider 同步。
-- `server/`: Rust 自托管同步服务，提供 `HTTP JSON + gRPC + gRPC-Web + WebSocket`。
-- `server-admin/`: 独立部署的后台前端，负责支付配置、存储拓扑、审计与备份视图。
-- `cli/`: Rust CLI，用于登录、自检、拉取远端 revision/ops。
-- `crates/`: 跨端复用的 Rust 核心：`otp-core`、`crypto-core`、`sync-core`、`provider-core`、`wasm-core`、`server-core`。
-- `packages/sync-spec/`: 同步协议单一真源，保存 `.proto`。
-- `extension/`, `mobile/`: 后续子项目目录。
-- `infra/docker/`: Docker Compose 与部署辅助配置。
+- `web/`：当前可用的单页 2FA 应用，支持本地离线保存、扫码导入、分享、点击复制、WebDAV 同步。
+- `crates/`：跨端复用的 Rust 核心，当前包含 OTP、加密、同步、Provider 抽象、WASM 与 Mobile Bridge。
+- `packages/wasm-web/`：Web 侧使用的 WASM 打包产物。
+- `mobile/`：Android / iOS 原生客户端工程骨架。
+- `extension/`：浏览器扩展目录。
+- `scripts/`：WASM 构建、移动端绑定、静态发布与自动更新脚本。
+- `specs/`：产品规格与工程约束。
 
-## 当前状态
+## 当前已落地
 
-已完成：
-
-- `web/` 已迁移完成，并接入 Rust/WASM OTP core。
-- `web/` 已打通 Self Provider 浏览器同步链路。
-- `server/` 已提供 challenge/session、revision、pull/push、billing entitlement 以及 `/api/v1/admin/*` 的 JSON API。
-- `server-admin/` 已接通真实 admin API，使用 `@tanstack/react-query + zod` 做强类型读取，并支持通过 `X-Admin-Token` 保存 billing policy。
-- `crates/mobile-bridge/` 已通过 `UniFFI` 导出移动端共享 Rust facade，`mobile/android` 与 `mobile/ios` 已补齐本地存储、多项 OTP 列表、倒计时刷新与点击复制的原生源码。
-- 已提供 `SQLite` / `PostgreSQL` 两套 Docker Compose 栈，默认包含 `server + server-admin`。
-
-仍在推进：
-
-- GitHub Gist / Google Drive Provider。
-- admin 写入鉴权的进一步细化、配置编辑扩展与备份任务执行。
-- 浏览器插件、移动端、CLI 技能与自动化接入。
+- Web 端多条目管理
+- Base32 密钥录入与验证码生成
+- 倒计时与自动刷新
+- 相机扫码与图片二维码导入
+- 多选分享与当前域名 `?import=` 导入
+- 验证码点击复制且默认无空格
+- 本地持久化与版本迁移
+- WebDAV 配置、验证、拉取、推送、刷新与清空
+- Rust/WASM OTP 与加密能力接入 Web
+- GitHub Pages 与 GitHub Release 静态发布脚本
 
 ## 本地开发
 
 ```bash
 pnpm install
 pnpm dev:web
-pnpm dev:admin
 ```
 
 说明：
 
-- `pnpm dev:web` 会先自动生成 `packages/wasm-web/pkg`，再启动 Vite。
-- `pnpm dev:admin` 会启动独立的 `server-admin` 控制台，并默认把 `/api` 与 `/ws` 代理到 `http://127.0.0.1:8080`。
+- `pnpm dev:web` 会先自动构建 `packages/wasm-web/pkg`，再启动 Vite。
+- 当前根工作区不再包含内置 `server` / `server-admin` / `cli`。
+- 如需验证远端同步，请单独启动 `dwebCloud` 或任意兼容 WebDAV 的服务。
 
-## Mobile
+## 构建与验证
+
+```bash
+pnpm build:web
+cargo test --workspace
+```
+
+或直接：
+
+```bash
+pnpm build
+```
+
+## WebDAV 同步
+
+Web 端当前远端同步格式固定为：
+
+- `/.gaubee-2fa/manifest.json`
+- `/.gaubee-2fa/vault.ndjson`
+
+其中：
+
+- `manifest.json` 保存 revision、hash、条目数、更新时间等元数据。
+- `vault.ndjson` 保存逐行加密后的条目快照。
+- `Vault Secret` 只用于本地加解密，不应依赖服务端保存明文。
+
+当前推荐接入方式：
+
+1. 启动 `dwebCloud` 或其它兼容 WebDAV 的服务。
+2. 在 2FA 页面填写 `WebDAV Host / Account / Password / Vault Secret`。
+3. 先点击“验证配置”，再按需拉取或推送。
+
+## 静态部署
+
+一键下载到指定目录：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Gaubee/2fa/main/scripts/install-www.sh | sh -s -- --www=./mydir
+```
+
+配置自动更新：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Gaubee/2fa/main/scripts/setup-auto-update.sh | sh -s -- --www=./mydir --interval=600
+```
+
+说明：
+
+- 自动更新会注册后台轮询脚本。
+- 部署配置会落到本地配置文件，后续可无参数继续运行。
+- 用户数据仍保存在浏览器本地存储中，不会因为静态资源更新而被覆盖。
+
+## GitHub Pages
+
+仓库包含 `.github/workflows/deploy-pages.yml`，推送 `main` 分支后会自动发布 `web/dist` 到 GitHub Pages。
+
+前端部署基路径位于 `web/vite.config.ts`：
+
+- `base: "/2fa/"`
+
+## GitHub Release
+
+```bash
+pnpm release:github
+pnpm release:github -- --tag v0.1.0
+pnpm release:github -- --tag v0.1.0 --skip-build
+```
+
+当前 Release 产物以静态站点为主，方便：
+
+- 直接下载 `web/dist`
+- 配合 `install-www.sh` 做私有化部署
+- 在 GitHub Pages、Nginx、对象存储静态托管中使用
+
+## 移动端
+
+当前仓库仍保留移动端骨架与 Rust 绑定脚本：
 
 ```bash
 pnpm mobile:bindings
@@ -63,118 +151,10 @@ pnpm mobile:ios:project
 
 说明：
 
-- `pnpm mobile:bindings` 会生成 Kotlin / Swift UniFFI 绑定文件。
-- `pnpm mobile:android:rust` 会通过 `cargo ndk` 生成 Android `.so` 到 `mobile/android/app/src/main/jniLibs`。
-- `pnpm mobile:android:assemble` 会调用仓库内置的 Gradle Wrapper 组装 Android Debug 包。
-- `pnpm mobile:ios:rust` 会生成 iOS `XCFramework`，输出到 `mobile/ios/Rust/`。
-- `pnpm mobile:ios:project` 会基于 `mobile/ios/project.yml` 生成 Xcode 工程，依赖 `xcodegen`。
+- 当前机器如果缺少 Android / iOS 环境，可以先只维护 Rust 核心与文档。
+- 等迁移到新的开发机器后，再继续原生客户端实现与验收。
 
-## 构建
+## 相关项目
 
-```bash
-pnpm build:wasm
-pnpm build:web
-pnpm build:admin
-cargo build --workspace
-```
-
-## 运行自托管服务
-
-```bash
-GAUBEE_2FA_ADMIN_TOKEN=change-me cargo run -p gaubee-2fa-server -- --http 127.0.0.1:8080 --grpc [::1]:50051 --db sqlite
-```
-
-可选数据库：
-
-- `--db sqlite`
-- `--db postgres --database-url postgres://gaubee:gaubee@127.0.0.1:5432/gaubee_2fa`
-
-服务也支持环境变量：
-
-- `GAUBEE_2FA_HTTP`
-- `GAUBEE_2FA_GRPC`
-- `GAUBEE_2FA_DB`
-- `GAUBEE_2FA_DATABASE_URL`
-- `GAUBEE_2FA_ADMIN_TOKEN`
-
-## CLI 示例
-
-```bash
-cargo run -p gaubee-2fa-cli -- --server http://127.0.0.1:50051 login --secret "your secret"
-cargo run -p gaubee-2fa-cli -- --server http://127.0.0.1:50051 revision --token <token> --vault-id <vault-id>
-```
-
-## GitHub Pages
-
-仓库包含 `.github/workflows/deploy-pages.yml`，推送 `main` 分支会自动发布 `web/dist` 到 Pages。
-
-前端部署路径配置在 `web/vite.config.ts`：
-
-- `base: "/2fa/"`
-
-## 私有化部署
-
-### 静态前端
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Gaubee/2fa/main/scripts/install-www.sh | sh -s -- --www=./mydir
-```
-
-### Docker 一键部署
-
-先复制环境变量模板：
-
-```bash
-cp infra/docker/.env.example infra/docker/.env
-```
-
-SQLite 栈：
-
-```bash
-pnpm docker:up:sqlite
-```
-
-PostgreSQL 栈：
-
-```bash
-pnpm docker:up:postgres
-```
-
-对应关闭命令：
-
-```bash
-pnpm docker:down:sqlite
-pnpm docker:down:postgres
-```
-
-默认暴露端口：
-
-- `server HTTP`: `8080`
-- `server gRPC`: `50051`
-- `server-admin`: `4173`
-
-更多细节见：`infra/docker/README.md`
-
-## Docker 文件
-
-- `server/Dockerfile`: Rust 自托管服务镜像。
-- `server-admin/Dockerfile`: 独立后台前端镜像，运行时使用 `nginx` 提供 SPA 服务，并把 `/api`、`/ws` 反向代理到 `server`。
-- `infra/docker/server-admin.nginx.conf`: 管理后台的 Nginx 模板，负责 SPA fallback 与 `/api`、`/ws` 反向代理。
-
-## GitHub Release 发布脚本
-
-```bash
-pnpm release:github
-pnpm release:github -- --tag v0.1.0
-pnpm release:github -- --tag v0.1.0 --skip-build
-```
-
-当前 release 产物仍以静态 `web/dist` 为主，后续会补上 `server/cli` 多平台二进制打包和容器镜像发布。
-
-## 自动更新
-
-静态站点自动更新脚本保持不变：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Gaubee/2fa/main/scripts/setup-auto-update.sh | sh -s -- --www=./mydir --interval=600
-```
+- `dwebCloud`：独立的 WebDAV / 存储服务项目，用于承载自托管同步、授权与计费边界。
+- 2FA 当前只消费标准 Provider，不再直接内嵌后端实现。

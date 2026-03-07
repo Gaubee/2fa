@@ -1,5 +1,4 @@
 packages:
   - web
-  - server-admin
   - extension
   - packages/*
