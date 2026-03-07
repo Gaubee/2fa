@@ -158,4 +158,5 @@ pnpm mobile:ios:project
 ## 相关项目
 
 - [`dwebCloud`](https://github.com/Gaubee/dweb_cloud)：独立的 WebDAV / 存储服务项目，用于承载自托管同步、授权与计费边界。
+- `dwebCloud` 的部署与 2FA 接入手册：<https://github.com/Gaubee/dweb_cloud/blob/main/infra/2fa-webdav.md>
 - 2FA 当前只消费标准 Provider，不再直接内嵌后端实现。
